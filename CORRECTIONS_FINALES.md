@@ -7,15 +7,22 @@
 **Solution**: Utiliser `EndDocPrinter` (sans le W)
 
 ### 2. Type de retour des fonctions Windows
-**Erreur**: Les fonctions retournent `Result<(), Error>`, pas `BOOL`
-**Solution**: Utiliser `if let Err(e)` au lieu de `.as_bool()`
+**Erreur**: Mélange de `Result` et `BOOL` selon les fonctions
+**Solution**:
+- `OpenPrinterW` retourne `Result<(), Error>` → utiliser `if let Err(e)`
+- `StartPagePrinter`, `WritePrinter`, `EndPagePrinter`, `EndDocPrinter` retournent `BOOL` → utiliser `.as_bool()`
 
 ```rust
-// ❌ Incorrect
-if StartPagePrinter(handle).as_bool() == false { ... }
+// Pour OpenPrinterW (retourne Result)
+if let Err(e) = OpenPrinterW(...) {
+    return Err(format!("Erreur: {:?}", e));
+}
 
-// ✅ Correct
-if let Err(e) = StartPagePrinter(handle) { ... }
+// Pour les autres fonctions (retournent BOOL)
+let result = StartPagePrinter(handle);
+if !result.as_bool() {
+    return Err("Erreur".to_string());
+}
 ```
 
 ### 3. Type du paramètre `pdefault` de `OpenPrinterW`
@@ -74,38 +81,42 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
             return Err("Impossible de démarrer le document".to_string());
         }
 
-        // Démarrer la page
-        if let Err(e) = StartPagePrinter(printer_handle) {
+        // Démarrer la page (retourne BOOL)
+        let page_result = StartPagePrinter(printer_handle);
+        if !page_result.as_bool() {
             let _ = EndDocPrinter(printer_handle);  // ← Sans le W
             let _ = ClosePrinter(printer_handle);
-            return Err(format!("Impossible de démarrer la page: {:?}", e));
+            return Err("Impossible de démarrer la page".to_string());
         }
 
-        // Écrire les données
+        // Écrire les données (retourne BOOL)
         let mut bytes_written: u32 = 0;
-        if let Err(e) = WritePrinter(
+        let write_result = WritePrinter(
             printer_handle,
             data.as_ptr() as *const _,
             data.len() as u32,
             &mut bytes_written,
-        ) {
+        );
+        if !write_result.as_bool() {
             let _ = EndPagePrinter(printer_handle);
             let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err(format!("Erreur d'écriture: {:?}", e));
+            return Err("Erreur d'écriture".to_string());
         }
 
-        // Terminer la page
-        if let Err(e) = EndPagePrinter(printer_handle) {
+        // Terminer la page (retourne BOOL)
+        let end_page_result = EndPagePrinter(printer_handle);
+        if !end_page_result.as_bool() {
             let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err(format!("Impossible de terminer la page: {:?}", e));
+            return Err("Impossible de terminer la page".to_string());
         }
 
-        // Terminer le document
-        if let Err(e) = EndDocPrinter(printer_handle) {
+        // Terminer le document (retourne BOOL)
+        let end_doc_result = EndDocPrinter(printer_handle);
+        if !end_doc_result.as_bool() {
             let _ = ClosePrinter(printer_handle);
-            return Err(format!("Impossible de terminer le document: {:?}", e));
+            return Err("Impossible de terminer le document".to_string());
         }
 
         // Fermer l'imprimante

@@ -59,10 +59,11 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
 
         // Démarrer la page
         eprintln!("📃 Démarrage de la page...");
-        if let Err(e) = StartPagePrinter(printer_handle) {
+        let page_result = StartPagePrinter(printer_handle);
+        if !page_result.as_bool() {
             let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err(format!("Impossible de démarrer la page: {:?}", e));
+            return Err("Impossible de démarrer la page".to_string());
         }
 
         eprintln!("✅ Page démarrée");
@@ -70,33 +71,36 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
         // Écrire les données
         eprintln!("✍️ Écriture des données...");
         let mut bytes_written: u32 = 0;
-        if let Err(e) = WritePrinter(
+        let write_result = WritePrinter(
             printer_handle,
             data.as_ptr() as *const _,
             data.len() as u32,
             &mut bytes_written,
-        ) {
+        );
+        if !write_result.as_bool() {
             let _ = EndPagePrinter(printer_handle);
             let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err(format!("Erreur lors de l'écriture des données: {:?}", e));
+            return Err("Erreur lors de l'écriture des données".to_string());
         }
 
         eprintln!("✅ {} octets écrits", bytes_written);
 
         // Terminer la page
         eprintln!("🏁 Fin de la page...");
-        if let Err(e) = EndPagePrinter(printer_handle) {
+        let end_page_result = EndPagePrinter(printer_handle);
+        if !end_page_result.as_bool() {
             let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err(format!("Impossible de terminer la page: {:?}", e));
+            return Err("Impossible de terminer la page".to_string());
         }
 
         // Terminer le document
         eprintln!("🏁 Fin du document...");
-        if let Err(e) = EndDocPrinter(printer_handle) {
+        let end_doc_result = EndDocPrinter(printer_handle);
+        if !end_doc_result.as_bool() {
             let _ = ClosePrinter(printer_handle);
-            return Err(format!("Impossible de terminer le document: {:?}", e));
+            return Err("Impossible de terminer le document".to_string());
         }
 
         // Fermer l'imprimante
