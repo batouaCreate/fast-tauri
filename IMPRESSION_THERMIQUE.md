@@ -61,7 +61,9 @@ TicketBuilder.createManifest({...})
 ## Configuration des imprimantes
 
 ### Windows
-Chemin de l'imprimante: `USB001`, `LPT1`, ou nom de l'imprimante
+Nom exact de l'imprimante tel qu'affiché dans les paramètres Windows (ex: `POS-80`, `Thermal Printer`, `XP-58`, etc.)
+
+**Important**: L'application utilise l'API Windows native pour l'impression RAW, ce qui garantit que les commandes ESC/POS sont envoyées directement à l'imprimante sans interprétation par le spooler Windows.
 
 ### macOS
 Chemin: Nom CUPS de l'imprimante (ex: `thermal_printer`)
@@ -165,8 +167,10 @@ Formats supportés: JPEG, PNG, BMP, GIF
 
 **Windows**:
 - Vérifiez que l'imprimante est connectée et allumée
-- Utilisez le Gestionnaire de périphériques pour voir le port COM
-- Essayez `USB001`, `LPT1` ou le nom du port
+- Allez dans **Paramètres > Périphériques > Imprimantes et scanners**
+- Utilisez le nom **exact** de l'imprimante tel qu'affiché (sensible à la casse)
+- Assurez-vous que l'imprimante est définie comme imprimante locale (pas réseau)
+- Pour les imprimantes USB, installez les pilotes du fabricant si nécessaire
 
 **macOS**:
 - Utilisez `lpstat -p` dans le Terminal pour lister les imprimantes
@@ -182,6 +186,20 @@ Formats supportés: JPEG, PNG, BMP, GIF
 2. Vérifiez les permissions d'accès au périphérique
 3. Testez avec un autre logiciel pour valider le matériel
 4. Consultez les logs dans la console de l'application
+
+### Windows: Impression bloquée sur "Page x sur document" (RÉSOLU)
+
+**Symptôme**: L'impression affiche "Page x sur document" avec x qui s'incrémente indéfiniment, mais rien ne sort de l'imprimante.
+
+**Cause**: Ce problème était causé par l'utilisation de PowerShell `Out-Printer` qui interprétait les données ESC/POS comme du texte au lieu de les envoyer en mode RAW.
+
+**Solution implémentée**: L'application utilise désormais l'API Windows native (`WritePrinter`) avec le type de données "RAW", ce qui garantit que les commandes ESC/POS sont envoyées directement à l'imprimante sans interprétation.
+
+**Si le problème persiste**:
+1. Vérifiez que le nom de l'imprimante est correct
+2. Assurez-vous que l'imprimante supporte l'impression RAW (la plupart des imprimantes thermiques le supportent)
+3. Vérifiez les pilotes de l'imprimante (installez les pilotes ESC/POS génériques si nécessaire)
+4. Consultez les logs de l'application pour plus de détails
 
 ### Le logo ne s'affiche pas
 
@@ -270,9 +288,15 @@ await ThermalPrinter.printRawData('USB001', commands);
 ### Rust
 - `image = "0.24"` - Traitement d'images
 - `base64 = "0.21"` - Décodage base64
+- `windows = "0.58"` (Windows uniquement) - API Windows native pour l'impression RAW
+  - Features utilisées:
+    - `Win32_Foundation` - Types de base Windows
+    - `Win32_Graphics_Printing` - API d'impression
+    - `Win32_Storage_FileSystem` - Gestion des fichiers
 
 ### TypeScript
 - `@tauri-apps/api` - Communication avec Rust
+- `@tauri-apps/plugin-http` - Téléchargement d'images depuis URLs
 
 ## Licence et support
 
