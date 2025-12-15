@@ -21,7 +21,7 @@ build-windows:
     paths:
       - src-tauri/target/release/bundle/msi/*.msi
       - src-tauri/target/release/bundle/nsis/*.exe
-    expire_in: 1 week
+    expire_in: 2 week
   only:
     - develop
     - main
