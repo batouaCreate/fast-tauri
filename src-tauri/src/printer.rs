@@ -380,13 +380,63 @@ pub fn print_stub_and_ticket(
         return Ok("Souche et ticket imprimés avec succès".to_string());
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
-        let printer_path = if cfg!(target_os = "windows") {
-            format!("\\\\.\\{}", printer_name)
-        } else {
-            format!("/dev/usb/{}", printer_name)
-        };
+        use std::io::Write as _;
+        // Sur Windows, utiliser un fichier temporaire + PowerShell
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join(format!("thermal_print_{}.bin", std::process::id()));
+
+        eprintln!("📝 Création fichier temporaire: {:?}", temp_file);
+
+        // Écrire les données dans le fichier temporaire
+        let mut file = std::fs::File::create(&temp_file)
+            .map_err(|e| format!("Impossible de créer le fichier temporaire: {}", e))?;
+
+        file.write_all(&commands)
+            .map_err(|e| format!("Erreur d'écriture dans le fichier temporaire: {}", e))?;
+
+        drop(file); // Fermer le fichier avant de l'utiliser
+
+        eprintln!("📤 Envoi vers l'imprimante Windows: {}", printer_name);
+
+        // Méthode 1: Essayer avec PowerShell Out-Printer
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                &format!(
+                    "Get-Content -Path '{}' -Encoding Byte -ReadCount 0 | Out-Printer -Name '{}'",
+                    temp_file.display(),
+                    printer_name
+                )
+            ])
+            .output();
+
+        // Nettoyer le fichier temporaire
+        let _ = std::fs::remove_file(&temp_file);
+
+        match output {
+            Ok(output) if output.status.success() => {
+                eprintln!("✅ Impression réussie via PowerShell");
+                return Ok("Souche et ticket imprimés avec succès".to_string());
+            }
+            Ok(output) => {
+                let error_msg = String::from_utf8_lossy(&output.stderr);
+                eprintln!("❌ Erreur PowerShell: {}", error_msg);
+                return Err(format!("Erreur d'impression PowerShell: {}", error_msg));
+            }
+            Err(e) => {
+                eprintln!("❌ Impossible d'exécuter PowerShell: {}", e);
+                return Err(format!("Impossible d'exécuter PowerShell: {}", e));
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let printer_path = format!("/dev/usb/{}", printer_name);
 
         let mut file = OpenOptions::new()
             .write(true)
@@ -438,13 +488,63 @@ pub fn print_ticket(
         return Ok("Ticket imprimé avec succès".to_string());
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
-        let printer_path = if cfg!(target_os = "windows") {
-            format!("\\\\.\\{}", printer_name)
-        } else {
-            format!("/dev/usb/{}", printer_name)
-        };
+        use std::io::Write as _;
+        // Sur Windows, utiliser un fichier temporaire + PowerShell
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join(format!("thermal_print_{}.bin", std::process::id()));
+
+        eprintln!("📝 Création fichier temporaire: {:?}", temp_file);
+
+        // Écrire les données dans le fichier temporaire
+        let mut file = std::fs::File::create(&temp_file)
+            .map_err(|e| format!("Impossible de créer le fichier temporaire: {}", e))?;
+
+        file.write_all(&commands)
+            .map_err(|e| format!("Erreur d'écriture dans le fichier temporaire: {}", e))?;
+
+        drop(file); // Fermer le fichier avant de l'utiliser
+
+        eprintln!("📤 Envoi vers l'imprimante Windows: {}", printer_name);
+
+        // Méthode 1: Essayer avec PowerShell Out-Printer
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                &format!(
+                    "Get-Content -Path '{}' -Encoding Byte -ReadCount 0 | Out-Printer -Name '{}'",
+                    temp_file.display(),
+                    printer_name
+                )
+            ])
+            .output();
+
+        // Nettoyer le fichier temporaire
+        let _ = std::fs::remove_file(&temp_file);
+
+        match output {
+            Ok(output) if output.status.success() => {
+                eprintln!("✅ Impression réussie via PowerShell");
+                return Ok("Ticket imprimé avec succès".to_string());
+            }
+            Ok(output) => {
+                let error_msg = String::from_utf8_lossy(&output.stderr);
+                eprintln!("❌ Erreur PowerShell: {}", error_msg);
+                return Err(format!("Erreur d'impression PowerShell: {}", error_msg));
+            }
+            Err(e) => {
+                eprintln!("❌ Impossible d'exécuter PowerShell: {}", e);
+                return Err(format!("Impossible d'exécuter PowerShell: {}", e));
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let printer_path = format!("/dev/usb/{}", printer_name);
 
         let mut file = OpenOptions::new()
             .write(true)
@@ -665,13 +765,63 @@ pub fn print_raw_data(printer_name: String, data: Vec<u8>) -> Result<String, Str
         return Ok("Données envoyées avec succès".to_string());
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
-        let printer_path = if cfg!(target_os = "windows") {
-            format!("\\\\.\\{}", printer_name)
-        } else {
-            format!("/dev/usb/{}", printer_name)
-        };
+        use std::io::Write as _;
+        // Sur Windows, utiliser un fichier temporaire + PowerShell
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join(format!("thermal_print_{}.bin", std::process::id()));
+
+        eprintln!("📝 Création fichier temporaire: {:?}", temp_file);
+
+        // Écrire les données dans le fichier temporaire
+        let mut file = std::fs::File::create(&temp_file)
+            .map_err(|e| format!("Impossible de créer le fichier temporaire: {}", e))?;
+
+        file.write_all(&data)
+            .map_err(|e| format!("Erreur d'écriture dans le fichier temporaire: {}", e))?;
+
+        drop(file); // Fermer le fichier avant de l'utiliser
+
+        eprintln!("📤 Envoi vers l'imprimante Windows: {}", printer_name);
+
+        // Méthode 1: Essayer avec PowerShell Out-Printer
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                &format!(
+                    "Get-Content -Path '{}' -Encoding Byte -ReadCount 0 | Out-Printer -Name '{}'",
+                    temp_file.display(),
+                    printer_name
+                )
+            ])
+            .output();
+
+        // Nettoyer le fichier temporaire
+        let _ = std::fs::remove_file(&temp_file);
+
+        match output {
+            Ok(output) if output.status.success() => {
+                eprintln!("✅ Impression réussie via PowerShell");
+                return Ok("Données envoyées avec succès".to_string());
+            }
+            Ok(output) => {
+                let error_msg = String::from_utf8_lossy(&output.stderr);
+                eprintln!("❌ Erreur PowerShell: {}", error_msg);
+                return Err(format!("Erreur d'impression PowerShell: {}", error_msg));
+            }
+            Err(e) => {
+                eprintln!("❌ Impossible d'exécuter PowerShell: {}", e);
+                return Err(format!("Impossible d'exécuter PowerShell: {}", e));
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let printer_path = format!("/dev/usb/{}", printer_name);
 
         let mut file = OpenOptions::new()
             .write(true)

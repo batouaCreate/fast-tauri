@@ -83,6 +83,7 @@ const Departs: React.FC = () => {
                 <tr>
                   <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Car</th>
                   <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Nom</th>
+                  <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Gare</th>
                   <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Destination</th>
                   <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Date</th>
                   <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Heure</th>
@@ -103,6 +104,9 @@ const Departs: React.FC = () => {
                     </td>
                     <td className="py-4 px-4">
                       <span className="text-gray-900 dark:text-white">{depart.dep_nom}</span>
+                    </td>
+                    <td className="py-4 px-4">
+                      <span className="text-gray-900 dark:text-white">{depart.ag_nom}</span>
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-2">
