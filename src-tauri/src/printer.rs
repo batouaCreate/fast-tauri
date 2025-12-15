@@ -12,12 +12,11 @@ use std::io::Write;
 #[cfg(target_os = "windows")]
 fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
     use windows::core::PWSTR;
-    use windows::Win32::Foundation::{HANDLE, BOOL};
+    use windows::Win32::Foundation::HANDLE;
     use windows::Win32::Graphics::Printing::{
         OpenPrinterW, StartDocPrinterW, StartPagePrinter, WritePrinter,
-        EndPagePrinter, EndDocPrinterW, ClosePrinter, DOC_INFO_1W,
+        EndPagePrinter, EndDocPrinter, ClosePrinter, DOC_INFO_1W,
     };
-    use std::ptr;
 
     eprintln!("🖨️ Impression RAW Windows sur: {}", printer_name);
     eprintln!("📊 Taille des données: {} octets", data.len());
@@ -29,12 +28,12 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
 
         // Ouvrir l'imprimante
         eprintln!("🔓 Ouverture de l'imprimante...");
-        if OpenPrinterW(
+        if let Err(e) = OpenPrinterW(
             PWSTR(printer_name_wide.as_ptr() as *mut _),
             &mut printer_handle,
-            ptr::null_mut(),
-        ).as_bool() == false {
-            return Err(format!("Impossible d'ouvrir l'imprimante '{}'", printer_name));
+            None,
+        ) {
+            return Err(format!("Impossible d'ouvrir l'imprimante '{}': {:?}", printer_name, e));
         }
 
         eprintln!("✅ Imprimante ouverte");
@@ -45,7 +44,7 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
 
         let mut doc_info = DOC_INFO_1W {
             pDocName: PWSTR(doc_name.as_ptr() as *mut _),
-            pOutputFile: PWSTR(ptr::null_mut()),
+            pOutputFile: PWSTR(std::ptr::null_mut()),
             pDatatype: PWSTR(doc_type.as_ptr() as *mut _),
         };
 
@@ -60,10 +59,10 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
 
         // Démarrer la page
         eprintln!("📃 Démarrage de la page...");
-        if StartPagePrinter(printer_handle).as_bool() == false {
-            let _ = EndDocPrinterW(printer_handle);
+        if let Err(e) = StartPagePrinter(printer_handle) {
+            let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err("Impossible de démarrer la page".to_string());
+            return Err(format!("Impossible de démarrer la page: {:?}", e));
         }
 
         eprintln!("✅ Page démarrée");
@@ -71,33 +70,33 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
         // Écrire les données
         eprintln!("✍️ Écriture des données...");
         let mut bytes_written: u32 = 0;
-        if WritePrinter(
+        if let Err(e) = WritePrinter(
             printer_handle,
             data.as_ptr() as *const _,
             data.len() as u32,
             &mut bytes_written,
-        ).as_bool() == false {
+        ) {
             let _ = EndPagePrinter(printer_handle);
-            let _ = EndDocPrinterW(printer_handle);
+            let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err("Erreur lors de l'écriture des données".to_string());
+            return Err(format!("Erreur lors de l'écriture des données: {:?}", e));
         }
 
         eprintln!("✅ {} octets écrits", bytes_written);
 
         // Terminer la page
         eprintln!("🏁 Fin de la page...");
-        if EndPagePrinter(printer_handle).as_bool() == false {
-            let _ = EndDocPrinterW(printer_handle);
+        if let Err(e) = EndPagePrinter(printer_handle) {
+            let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err("Impossible de terminer la page".to_string());
+            return Err(format!("Impossible de terminer la page: {:?}", e));
         }
 
         // Terminer le document
         eprintln!("🏁 Fin du document...");
-        if EndDocPrinterW(printer_handle).as_bool() == false {
+        if let Err(e) = EndDocPrinter(printer_handle) {
             let _ = ClosePrinter(printer_handle);
-            return Err("Impossible de terminer le document".to_string());
+            return Err(format!("Impossible de terminer le document: {:?}", e));
         }
 
         // Fermer l'imprimante
