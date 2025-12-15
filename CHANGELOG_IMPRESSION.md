@@ -34,9 +34,17 @@ L'ancienne implémentation utilisait PowerShell `Out-Printer` qui interprétait 
 
 ### Fichiers modifiés
 
-- `src-tauri/Cargo.toml` - Ajout dépendance Windows
+- `src-tauri/Cargo.toml` - Ajout dépendance Windows avec features nécessaires
+  - `Win32_Foundation` - Types de base Windows (HANDLE, BOOL)
+  - `Win32_Graphics_Printing` - API d'impression
+  - `Win32_Graphics_Gdi` - Requis pour OpenPrinterW et EndDocPrinterW
+  - `Win32_Storage_FileSystem` - Gestion des fichiers
 - `src-tauri/src/printer.rs` - Nouvelle fonction d'impression RAW
+  - Utilisation de `PWSTR` au lieu de `PCWSTR` pour les chaînes mutables
+  - Vérification des `BOOL` via `.as_bool()` au lieu de `.is_err()`
+  - Gestion d'erreur appropriée avec fermeture propre des handles
 - `IMPRESSION_THERMIQUE.md` - Mise à jour documentation
+- `CHANGELOG_IMPRESSION.md` - Documentation des changements
 
 ### Instructions de test
 
