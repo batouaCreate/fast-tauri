@@ -12,7 +12,7 @@ use std::io::Write;
 #[cfg(target_os = "windows")]
 fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
     use windows::core::PWSTR;
-    use windows::Win32::Foundation::{HANDLE, GetLastError, WIN32_ERROR};
+    use windows::Win32::Foundation::{HANDLE, GetLastError};
     use windows::Win32::Graphics::Printing::{
         OpenPrinterW, StartDocPrinterW, StartPagePrinter, WritePrinter,
         EndPagePrinter, EndDocPrinter, ClosePrinter, DOC_INFO_1W,
@@ -142,10 +142,9 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
 
         // Fermer l'imprimante
         eprintln!("🔒 Fermeture de l'imprimante...");
-        let close_result = ClosePrinter(printer_handle);
-        if !close_result.as_bool() {
+        if let Err(e) = ClosePrinter(printer_handle) {
             let error_code = GetLastError();
-            eprintln!("⚠️ Avertissement: Erreur lors de la fermeture de l'imprimante (Code: {:?})", error_code);
+            eprintln!("⚠️ Avertissement: Erreur lors de la fermeture de l'imprimante: {:?} (Code: {:?})", e, error_code);
         } else {
             eprintln!("✅ Imprimante fermée");
         }
