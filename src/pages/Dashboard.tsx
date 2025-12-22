@@ -1,16 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Package, Briefcase, Calendar, RefreshCw, Ticket, DollarSign, Bus } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { dashboardApi, DashboardData } from '../services/api';
+import { dashboardApi, DashboardData, departureApi, Departure, colisApi, Colis } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard: React.FC = () => {
   const { showToast } = useToast();
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
+  const { user } = useAuth();
+
+  // Initialiser les dates au jour actuel (00:00:00 pour début, 23:59:59 pour fin)
+  const getTodayStart = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  };
+
+  const getTodayEnd = () => {
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return today;
+  };
+
+  const [startDate, setStartDate] = useState<Date | null>(getTodayStart());
+  const [endDate, setEndDate] = useState<Date | null>(getTodayEnd());
   const [loading, setLoading] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [recentDepartures, setRecentDepartures] = useState<Departure[]>([]);
+  const [recentColis, setRecentColis] = useState<Colis[]>([]);
 
   // Fonction pour formater la date au format requis: YYYY-MM-DD HH:mm:ss
   const formatDateForAPI = (date: Date): string => {
@@ -28,12 +46,12 @@ const Dashboard: React.FC = () => {
       setLoading(true);
       const userId = localStorage.getItem('userId');
       if (!userId) {
-        showToast('error', 'Utilisateur non identifié');
+        showToast('error', 'Erreur', 'Utilisateur non identifié');
         return;
       }
 
       if (!startDate || !endDate) {
-        showToast('error', 'Veuillez sélectionner une date de début et de fin');
+        showToast('error', 'Erreur', 'Veuillez sélectionner une date de début et de fin');
         return;
       }
 
@@ -44,13 +62,50 @@ const Dashboard: React.FC = () => {
       });
 
       setDashboardData(response.data);
-      showToast('success', 'Données actualisées avec succès');
+      showToast('success', 'Succès', 'Données actualisées avec succès');
     } catch (error: any) {
-      showToast('error', error.message || 'Erreur de chargement du dashboard');
+      showToast('error', 'Erreur', error.message || 'Erreur de chargement du dashboard');
     } finally {
       setLoading(false);
     }
   };
+
+  // Charger les derniers départs
+  const loadRecentDepartures = async () => {
+    if (!user) return;
+
+    try {
+      const response = await departureApi.loadAllDepartures(parseInt(user.id));
+      // Prendre les 5 départs les plus récents
+      const recent = response.data.slice(0, 5);
+      setRecentDepartures(recent);
+    } catch (error) {
+      console.error('Erreur lors du chargement des départs:', error);
+    }
+  };
+
+  // Charger les colis récents
+  const loadRecentColis = async () => {
+    if (!user) return;
+
+    try {
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const response = await colisApi.colisByUser(parseInt(user.id), '', dateStr);
+      // Prendre les 5 colis les plus récents
+      const recent = response.data.slice(0, 5);
+      setRecentColis(recent);
+    } catch (error) {
+      console.error('Erreur lors du chargement des colis:', error);
+    }
+  };
+
+  // Charger les données au montage du composant
+  useEffect(() => {
+    loadDashboard();
+    loadRecentDepartures();
+    loadRecentColis();
+  }, [user]);
 
   // Formatage du chiffre d'affaire avec séparateur de milliers
   const formatCurrency = (value: number): string => {
@@ -176,59 +231,76 @@ const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Derniers départs</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Derniers départs ({recentDepartures.length})
+          </h2>
           <div className="space-y-3">
-            {[
-              { destination: 'Bouaké', heure: '07:30', quai: '1', status: 'À l\'heure' },
-              { destination: 'Ferkessédougou', heure: '08:45', quai: '2', status: 'Retard 15min' },
-              { destination: 'Agboville', heure: '10:15', quai: '3', status: 'À l\'heure' },
-            ].map((depart, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <Bus size={18} className="text-primary-500" />
-                  <div>
-                    <p className="font-medium text-gray-900 dark:text-white">{depart.destination}</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Quai {depart.quai}</p>
+            {recentDepartures.length > 0 ? (
+              recentDepartures.map((depart) => (
+                <div key={depart.dep_id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <Bus size={18} className="text-primary-500" />
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">{depart.agdest}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Car {depart.dep_numcar}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium text-gray-900 dark:text-white">{depart.dep_heure}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{depart.dateDep}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-medium text-gray-900 dark:text-white">{depart.heure}</p>
-                  <p className={`text-sm ${depart.status.includes('Retard') ? 'text-orange-500' : 'text-green-500'}`}>
-                    {depart.status}
-                  </p>
-                </div>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500 dark:text-gray-400">Aucun départ récent</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
         <div className="card">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Activité des colis</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Activité des colis ({recentColis.length})
+          </h2>
           <div className="space-y-3">
-            {[
-              { id: '#COL-1234', status: 'En attente', heure: '09:45' },
-              { id: '#COL-1235', status: 'En transit', heure: '10:20' },
-              { id: '#COL-1236', status: 'Livré', heure: '11:00' },
-            ].map((colis, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <Package size={18} className="text-primary-500" />
-                  <div>
-                    <p className="font-medium text-gray-900 dark:text-white">{colis.id}</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">{colis.heure}</p>
+            {recentColis.length > 0 ? (
+              recentColis.map((colis) => {
+                // Déterminer le statut en fonction de exp_stat
+                let statusLabel = 'En attente';
+                let statusColor = 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+
+                if (colis.exp_stat === 1) {
+                  statusLabel = 'En attente';
+                  statusColor = 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300';
+                } else if (colis.exp_stat === 2) {
+                  statusLabel = 'En transit';
+                  statusColor = 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300';
+                } else if (colis.exp_stat === 3) {
+                  statusLabel = 'Livré';
+                  statusColor = 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300';
+                }
+
+                return (
+                  <div key={colis.exp_id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <Package size={18} className="text-primary-500" />
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">{colis.exp_code}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{colis.exp_coldesc}</p>
+                      </div>
+                    </div>
+                    <span className={`px-3 py-1 rounded-lg text-sm font-medium ${statusColor}`}>
+                      {statusLabel}
+                    </span>
                   </div>
-                </div>
-                <span className={`px-3 py-1 rounded-lg text-sm font-medium ${
-                  colis.status === 'Livré'
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                    : colis.status === 'En transit'
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                    : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                }`}>
-                  {colis.status}
-                </span>
+                );
+              })
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500 dark:text-gray-400">Aucun colis récent</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>

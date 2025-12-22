@@ -15,6 +15,9 @@ export const API_CONFIG = {
     displaySiege: '/displaysiege',
     sellBillet: '/sellbillet',
     dashboard: '/dashboard',
+    bordBillet: '/bordbillet',
+    bordColis: '/bordcolis',
+    bordBagage: '/bordbagage',
   },
   timeout: 30000, // 30 seconds
 };

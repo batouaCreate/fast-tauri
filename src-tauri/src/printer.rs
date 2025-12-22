@@ -12,14 +12,16 @@ use std::io::Write;
 #[cfg(target_os = "windows")]
 fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
     use windows::core::PWSTR;
-    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::Foundation::{HANDLE, GetLastError, WIN32_ERROR};
     use windows::Win32::Graphics::Printing::{
         OpenPrinterW, StartDocPrinterW, StartPagePrinter, WritePrinter,
         EndPagePrinter, EndDocPrinter, ClosePrinter, DOC_INFO_1W,
     };
 
-    eprintln!("🖨️ Impression RAW Windows sur: {}", printer_name);
+    eprintln!("🖨️ === DÉBUT IMPRESSION RAW WINDOWS ===");
+    eprintln!("🖨️ Imprimante: '{}'", printer_name);
     eprintln!("📊 Taille des données: {} octets", data.len());
+    eprintln!("🔍 Premiers 50 octets: {:?}", &data[..data.len().min(50)]);
 
     unsafe {
         // Convertir le nom de l'imprimante en UTF-16
@@ -27,20 +29,28 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
         let mut printer_handle: HANDLE = HANDLE::default();
 
         // Ouvrir l'imprimante
-        eprintln!("🔓 Ouverture de l'imprimante...");
+        eprintln!("🔓 Tentative d'ouverture de l'imprimante '{}'...", printer_name);
         if let Err(e) = OpenPrinterW(
             PWSTR(printer_name_wide.as_ptr() as *mut _),
             &mut printer_handle,
             None,
         ) {
-            return Err(format!("Impossible d'ouvrir l'imprimante '{}': {:?}", printer_name, e));
+            let error_code = GetLastError();
+            eprintln!("❌ ERREUR OpenPrinterW: {:?}", e);
+            eprintln!("❌ Code erreur Windows: {:?}", error_code);
+            return Err(format!(
+                "Impossible d'ouvrir l'imprimante '{}': {:?} (Code: {:?}). Vérifiez que le nom est exact (sensible à la casse).",
+                printer_name, e, error_code
+            ));
         }
 
-        eprintln!("✅ Imprimante ouverte");
+        eprintln!("✅ Imprimante ouverte avec handle: {:?}", printer_handle);
 
         // Préparer les informations du document
-        let doc_name: Vec<u16> = "Ticket".encode_utf16().chain(std::iter::once(0)).collect();
+        let doc_name: Vec<u16> = "ESC/POS Ticket".encode_utf16().chain(std::iter::once(0)).collect();
         let doc_type: Vec<u16> = "RAW".encode_utf16().chain(std::iter::once(0)).collect();
+
+        eprintln!("📋 Type de document: RAW (impression directe)");
 
         let mut doc_info = DOC_INFO_1W {
             pDocName: PWSTR(doc_name.as_ptr() as *mut _),
@@ -50,26 +60,34 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
 
         // Démarrer le document
         eprintln!("📄 Démarrage du document...");
-        if StartDocPrinterW(printer_handle, 1, &mut doc_info as *mut _ as *mut _) == 0 {
+        let doc_id = StartDocPrinterW(printer_handle, 1, &mut doc_info as *mut _ as *mut _);
+        if doc_id == 0 {
+            let error_code = GetLastError();
+            eprintln!("❌ ERREUR StartDocPrinterW - Code: {:?}", error_code);
             let _ = ClosePrinter(printer_handle);
-            return Err("Impossible de démarrer le document d'impression".to_string());
+            return Err(format!(
+                "Impossible de démarrer le document d'impression (Code: {:?}). L'imprimante supporte-t-elle le mode RAW ?",
+                error_code
+            ));
         }
 
-        eprintln!("✅ Document démarré");
+        eprintln!("✅ Document démarré (ID: {})", doc_id);
 
         // Démarrer la page
         eprintln!("📃 Démarrage de la page...");
         let page_result = StartPagePrinter(printer_handle);
         if !page_result.as_bool() {
+            let error_code = GetLastError();
+            eprintln!("❌ ERREUR StartPagePrinter - Code: {:?}", error_code);
             let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err("Impossible de démarrer la page".to_string());
+            return Err(format!("Impossible de démarrer la page (Code: {:?})", error_code));
         }
 
         eprintln!("✅ Page démarrée");
 
         // Écrire les données
-        eprintln!("✍️ Écriture des données...");
+        eprintln!("✍️ Écriture de {} octets vers l'imprimante...", data.len());
         let mut bytes_written: u32 = 0;
         let write_result = WritePrinter(
             printer_handle,
@@ -77,37 +95,64 @@ fn print_raw_windows(printer_name: &str, data: &[u8]) -> Result<(), String> {
             data.len() as u32,
             &mut bytes_written,
         );
+
         if !write_result.as_bool() {
+            let error_code = GetLastError();
+            eprintln!("❌ ERREUR WritePrinter - Code: {:?}", error_code);
+            eprintln!("❌ Octets écrits avant erreur: {}", bytes_written);
             let _ = EndPagePrinter(printer_handle);
             let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err("Erreur lors de l'écriture des données".to_string());
+            return Err(format!(
+                "Erreur lors de l'écriture des données (Code: {:?}). {} octets écrits sur {}",
+                error_code, bytes_written, data.len()
+            ));
         }
 
-        eprintln!("✅ {} octets écrits", bytes_written);
+        eprintln!("✅ {} octets écrits sur {} (100%)", bytes_written, data.len());
+
+        if bytes_written != data.len() as u32 {
+            eprintln!("⚠️ ATTENTION: Tous les octets n'ont pas été écrits! ({}/{})", bytes_written, data.len());
+        }
 
         // Terminer la page
         eprintln!("🏁 Fin de la page...");
         let end_page_result = EndPagePrinter(printer_handle);
         if !end_page_result.as_bool() {
+            let error_code = GetLastError();
+            eprintln!("❌ ERREUR EndPagePrinter - Code: {:?}", error_code);
             let _ = EndDocPrinter(printer_handle);
             let _ = ClosePrinter(printer_handle);
-            return Err("Impossible de terminer la page".to_string());
+            return Err(format!("Impossible de terminer la page (Code: {:?})", error_code));
         }
+
+        eprintln!("✅ Page terminée");
 
         // Terminer le document
         eprintln!("🏁 Fin du document...");
         let end_doc_result = EndDocPrinter(printer_handle);
         if !end_doc_result.as_bool() {
+            let error_code = GetLastError();
+            eprintln!("❌ ERREUR EndDocPrinter - Code: {:?}", error_code);
             let _ = ClosePrinter(printer_handle);
-            return Err("Impossible de terminer le document".to_string());
+            return Err(format!("Impossible de terminer le document (Code: {:?})", error_code));
         }
+
+        eprintln!("✅ Document terminé");
 
         // Fermer l'imprimante
         eprintln!("🔒 Fermeture de l'imprimante...");
-        let _ = ClosePrinter(printer_handle);
+        let close_result = ClosePrinter(printer_handle);
+        if !close_result.as_bool() {
+            let error_code = GetLastError();
+            eprintln!("⚠️ Avertissement: Erreur lors de la fermeture de l'imprimante (Code: {:?})", error_code);
+        } else {
+            eprintln!("✅ Imprimante fermée");
+        }
 
-        eprintln!("✅ Impression terminée avec succès");
+        eprintln!("🎉 === IMPRESSION TERMINÉE AVEC SUCCÈS ===");
+        eprintln!("");
+
         Ok(())
     }
 }

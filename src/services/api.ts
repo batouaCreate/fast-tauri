@@ -1085,3 +1085,276 @@ export const dashboardApi = {
     }
   },
 };
+
+export interface BordereauTicket {
+  tick_id: number;
+  tick_vtick: number;
+  tick_user: number;
+  tick_depart: number;
+  tick_price: string;
+  tick_reduc: number;
+  tick_dest: number;
+  tick_nom: string;
+  tick_phone: string | null;
+  tick_siege: string;
+  tick_nature: string;
+  tick_method: string;
+  tick_create: string;
+  tick_type: string;
+  dest_ville: string;
+  [key: string]: any;
+}
+
+export interface BordereauDestination {
+  dest_id: number;
+  dest_ville: string;
+  dest_price: string;
+  nbtick: number;
+  amount: number;
+  [key: string]: any;
+}
+
+export interface BordereauDepart {
+  dep_id: number;
+  dep_numcar: string;
+  dep_nom: string;
+  dep_place: number;
+  dep_chauff: string;
+  dep_date: string;
+  dep_heure: string;
+  ag_nom: string;
+  agdest: string;
+  etp_img: string;
+  [key: string]: any;
+}
+
+export interface BordereauStatTicket {
+  tot_ticket: number;
+  nbtick: number;
+}
+
+export interface BordereauBilletData {
+  cptcolis: number;
+  tickets: BordereauTicket[];
+  stattick: BordereauStatTicket;
+  cptbag: number;
+  billet: BordereauDestination[];
+  depart: BordereauDepart[];
+  cptick: number;
+}
+
+export interface BordereauBilletResponse {
+  status: number;
+  message: string;
+  data: BordereauBilletData;
+}
+
+export interface BordereauColisItem {
+  exp_id: number;
+  exp_code: string;
+  exp_coldesc: string;
+  exp_frais: string;
+  exp_exp: string;
+  exp_dest: string;
+  ag_nom: string;
+  [key: string]: any;
+}
+
+export interface BordereauColisDepart {
+  dep_id: number;
+  dep_numcar: string;
+  dep_nom: string;
+  dep_place: number;
+  dep_chauff: string;
+  dep_date: string;
+  dep_heure: string;
+  ag_nom: string;
+  etp_img: string;
+  [key: string]: any;
+}
+
+export interface BordereauColisData {
+  cptcolis: number;
+  cptbag: number;
+  colis: BordereauColisItem[];
+  depart: BordereauColisDepart[];
+}
+
+export interface BordereauColisResponse {
+  status: number;
+  message: string;
+  data: BordereauColisData;
+}
+
+export interface BordereauBagageItem {
+  exp_id: number;
+  exp_code: string;
+  exp_coldesc: string;
+  exp_frais: string;
+  exp_exp: string;
+  [key: string]: any;
+}
+
+export interface BordereauBagageDepart {
+  dep_id: number;
+  dep_numcar: string;
+  dep_nom: string;
+  dep_place: number;
+  dep_chauff: string;
+  dep_date: string;
+  dep_heure: string;
+  ag_nom: string;
+  etp_img: string;
+  [key: string]: any;
+}
+
+export interface BordereauBagageData {
+  cptcolis: number;
+  cptbag: number;
+  bagage: BordereauBagageItem[];
+  depart: BordereauBagageDepart[];
+  cptick: number;
+}
+
+export interface BordereauBagageResponse {
+  status: number;
+  message: string;
+  data: BordereauBagageData;
+}
+
+export const bordereauApi = {
+  async getBordBillet(userId: number, agenceId: number, departId: number): Promise<BordereauBilletResponse> {
+    try {
+      console.log('📋 Chargement du bordereau billet:', { userId, agenceId, departId });
+
+      const response = await tauriFetch(
+        `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.bordBillet}?user=${userId}&agid=${agenceId}&depart=${departId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      console.log('📡 Réponse HTTP bordereau billet:', { status: response.status, ok: response.ok });
+
+      if (!response.ok) {
+        throw {
+          message: `Erreur de chargement du bordereau: ${response.statusText}`,
+          status: response.status,
+        } as ApiError;
+      }
+
+      const data = await response.json();
+      console.log('📋 Bordereau billet reçu:', data);
+
+      // Vérifier si la réponse contient un statut d'erreur
+      if (data.status !== 200) {
+        throw {
+          message: data.message || 'Erreur de chargement du bordereau',
+          status: data.status,
+        } as ApiError;
+      }
+
+      console.log('✅ Bordereau billet chargé avec succès:', data.message);
+      return data as BordereauBilletResponse;
+    } catch (error: any) {
+      console.error('❌ Erreur API bordereau billet:', error);
+      throw {
+        message: error.message || 'Erreur de connexion au serveur',
+        status: error.status,
+      } as ApiError;
+    }
+  },
+
+  async getBordColis(userId: number, agenceId: number, departId: number): Promise<BordereauColisResponse> {
+    try {
+      console.log('📋 Chargement du bordereau colis:', { userId, agenceId, departId });
+
+      const response = await tauriFetch(
+        `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.bordColis}?user=${userId}&agid=${agenceId}&depart=${departId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      console.log('📡 Réponse HTTP bordereau colis:', { status: response.status, ok: response.ok });
+
+      if (!response.ok) {
+        throw {
+          message: `Erreur de chargement du bordereau colis: ${response.statusText}`,
+          status: response.status,
+        } as ApiError;
+      }
+
+      const data = await response.json();
+      console.log('📋 Bordereau colis reçu:', data);
+
+      // Vérifier si la réponse contient un statut d'erreur
+      if (data.status !== 200) {
+        throw {
+          message: data.message || 'Erreur de chargement du bordereau colis',
+          status: data.status,
+        } as ApiError;
+      }
+
+      console.log('✅ Bordereau colis chargé avec succès:', data.message);
+      return data as BordereauColisResponse;
+    } catch (error: any) {
+      console.error('❌ Erreur API bordereau colis:', error);
+      throw {
+        message: error.message || 'Erreur de connexion au serveur',
+        status: error.status,
+      } as ApiError;
+    }
+  },
+
+  async getBordBagage(userId: number, agenceId: number, departId: number): Promise<BordereauBagageResponse> {
+    try {
+      console.log('📋 Chargement du bordereau bagage:', { userId, agenceId, departId });
+
+      const response = await tauriFetch(
+        `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.bordBagage}?user=${userId}&agid=${agenceId}&depart=${departId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      console.log('📡 Réponse HTTP bordereau bagage:', { status: response.status, ok: response.ok });
+
+      if (!response.ok) {
+        throw {
+          message: `Erreur de chargement du bordereau bagage: ${response.statusText}`,
+          status: response.status,
+        } as ApiError;
+      }
+
+      const data = await response.json();
+      console.log('📋 Bordereau bagage reçu:', data);
+
+      // Vérifier si la réponse contient un statut d'erreur
+      if (data.status !== 200) {
+        throw {
+          message: data.message || 'Erreur de chargement du bordereau bagage',
+          status: data.status,
+        } as ApiError;
+      }
+
+      console.log('✅ Bordereau bagage chargé avec succès:', data.message);
+      return data as BordereauBagageResponse;
+    } catch (error: any) {
+      console.error('❌ Erreur API bordereau bagage:', error);
+      throw {
+        message: error.message || 'Erreur de connexion au serveur',
+        status: error.status,
+      } as ApiError;
+    }
+  },
+};
