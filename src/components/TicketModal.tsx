@@ -188,6 +188,40 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
     setSelectedDestination(id || null);
   };
 
+  // Fonction pour recharger les sièges
+  const reloadSeats = async () => {
+    try {
+      setIsLoadingSeats(true);
+      const response = await siegeApi.displaySiege(departure.dep_id);
+
+      console.log('📊 Réponse API displaySiege (reload):', response);
+      console.log('📊 Nombre de sièges reçus:', response.data.length);
+
+      // Transformer les données de l'API en format Seat avec numérotation S{numéro}
+      const transformedSeats: Seat[] = response.data.map((siege: Siege) => {
+        const seatNumber = `S${siege.siege}`;
+        const status = siege.stat === 1 ? 'occupied' : 'available';
+
+        return {
+          id: seatNumber,
+          number: seatNumber,
+          status: status,
+          price: parseFloat(siege.price),
+        };
+      });
+
+      console.log('✅ Total sièges transformés:', transformedSeats.length);
+      console.log('✅ Sièges occupés:', transformedSeats.filter(s => s.status === 'occupied').length);
+      console.log('✅ Sièges disponibles:', transformedSeats.filter(s => s.status === 'available').length);
+      setSeats(transformedSeats);
+    } catch (error) {
+      console.error('Erreur lors du rechargement des sièges:', error);
+      showError('Erreur', 'Impossible de recharger les sièges');
+    } finally {
+      setIsLoadingSeats(false);
+    }
+  };
+
   // Fonction pour vendre un ticket payant
   const handleSellTicket = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -243,7 +277,13 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
         await printTicket(ticketData, ticketData.etp_img);
       }
 
-      onClose();
+      // Réinitialiser le formulaire
+      setSelectedSeats([]);
+      setCustomerInfo({ name: '', phone: '' });
+      setSelectedDestination(null);
+
+      // Recharger les sièges pour afficher la mise à jour
+      await reloadSeats();
     } catch (error: any) {
       console.error('Erreur lors de la vente du ticket:', error);
       showError('Erreur', error.message || 'Impossible de vendre le ticket');
@@ -305,7 +345,13 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
         await printTicket(ticketData, ticketData.etp_img);
       }
 
-      onClose();
+      // Réinitialiser le formulaire
+      setSelectedSeats([]);
+      setCustomerInfo({ name: '', phone: '' });
+      setSelectedDestination(null);
+
+      // Recharger les sièges pour afficher la mise à jour
+      await reloadSeats();
     } catch (error: any) {
       console.error('Erreur lors de la création du ticket gratuit:', error);
       showError('Erreur', error.message || 'Impossible de créer le ticket gratuit');
@@ -487,7 +533,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
                   <>
                     {/* Sièges - 3 colonnes à gauche, 2 colonnes à droite */}
                     <div className="space-y-3">
-                      {Array.from({ length: 13 }, (_, i) => i + 1).map(row => {
+                      {Array.from({ length: Math.ceil(seats.length / 5) }, (_, i) => i + 1).map(row => {
                         // Calculer les numéros de sièges pour cette rangée
                         const leftSeats = [1, 2, 3].map(col => (row - 1) * 5 + col);
                         const rightSeats = [4, 5].map(col => (row - 1) * 5 + col);
@@ -496,7 +542,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
                           <div key={row} className="flex gap-3 justify-center">
                             {/* Côté gauche (3 colonnes) */}
                             {leftSeats.map(seatNum => {
-                              if (seatNum > 64) return null; // Ne pas afficher au-delà de 64
+                              if (seatNum > seats.length) return null; // Ne pas afficher au-delà du nombre de sièges
                               const seatNumber = `S${seatNum}`;
                               const seat = seats.find(s => s.number === seatNumber);
                               const seatStatus = seat?.status || 'available';
@@ -524,7 +570,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
 
                             {/* Côté droit (2 colonnes) */}
                             {rightSeats.map(seatNum => {
-                              if (seatNum > 64) return null; // Ne pas afficher au-delà de 64
+                              if (seatNum > seats.length) return null; // Ne pas afficher au-delà du nombre de sièges
                               const seatNumber = `S${seatNum}`;
                               const seat = seats.find(s => s.number === seatNumber);
                               const seatStatus = seat?.status || 'available';

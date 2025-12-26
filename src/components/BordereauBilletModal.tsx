@@ -86,10 +86,13 @@ const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
       }
 
       // Préparer les données pour l'impression
-      const ticketItems = bordereauData.tickets.map(ticket => ({
-        label: `${ticket.dest_ville} - Siège ${ticket.tick_siege}`,
-        value: `${ticket.tick_price} FCFA`,
-      }));
+      const ticketItems = bordereauData.tickets.map(ticket => {
+        const prixFinal = parseFloat(ticket.tick_price) - (ticket.tick_reduc || 0);
+        return {
+          label: `${ticket.dest_ville} - Siège ${ticket.tick_siege}`,
+          value: prixFinal === 0 ? 'GRATUIT' : `${prixFinal} FCFA`,
+        };
+      });
 
       const ticketData = {
         title: 'BORDEREAU BILLET',
@@ -233,7 +236,10 @@ const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
                             {ticket.tick_siege}
                           </td>
                           <td className="py-2 px-4 text-gray-900 dark:text-white">
-                            {ticket.tick_price} FCFA
+                            {(() => {
+                              const prixFinal = parseFloat(ticket.tick_price) - (ticket.tick_reduc || 0);
+                              return prixFinal === 0 ? 'GRATUIT' : `${prixFinal} FCFA`;
+                            })()}
                           </td>
                         </tr>
                       ))}

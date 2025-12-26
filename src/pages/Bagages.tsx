@@ -11,8 +11,7 @@ const Bagages: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => {
     // Date par défaut: aujourd'hui au format YYYY-MM-DD
-    const today = new Date();
-    return today.toISOString().split('T')[0];
+    const today = new Date(); return today.toISOString().split('T')[0];
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { user } = useAuth();
@@ -23,28 +22,17 @@ const Bagages: React.FC = () => {
 
     try {
       setIsLoading(true);
-      const response = await bagageApi.bagageByUser(
-        parseInt(user.id),
-        searchTerm,
-        selectedDate
-      );
+      const response = await bagageApi.bagageByUser( parseInt(user.id), searchTerm, selectedDate );
       setBagages(response.data);
     } catch (error) {
       console.error('Erreur lors du chargement des bagages:', error);
       showError('Erreur', 'Impossible de charger les bagages');
-    } finally {
-      setIsLoading(false);
-    }
+    } finally { setIsLoading(false); }
   };
 
-  useEffect(() => {
-    loadBagages();
-  }, [user, selectedDate]);
+  useEffect(() => { loadBagages(); }, [user, selectedDate]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    loadBagages();
-  };
+  const handleSearch = (e: React.FormEvent) => { e.preventDefault(); loadBagages(); };
 
   return (
     <div>
