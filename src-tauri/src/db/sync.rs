@@ -31,7 +31,7 @@ impl SyncManager {
         });
 
         let response = client
-            .post(format!("{}/addDepart.php", self.api_base_url))
+            .post(format!("{}/adddepart", self.api_base_url))
             .json(&payload)
             .send()
             .await
@@ -66,12 +66,14 @@ impl SyncManager {
         Ok(remote_id)
     }
 
-    pub async fn sync_ticket(&self, ticket: &Ticket) -> Result<i64, String> {
+    pub async fn sync_ticket(&self, ticket: &Ticket, departure_remote_id: i64) -> Result<i64, String> {
         let client = reqwest::Client::new();
+
+        println!("🎫 [SYNC] Synchronisation ticket local_id={:?} avec departure_remote_id={}", ticket.id, departure_remote_id);
 
         let payload = json!({
             "user": ticket.tick_user,
-            "depart": ticket.tick_depart,
+            "depart": departure_remote_id,  // Utiliser l'ID distant du départ
             "dest": ticket.tick_dest,
             "siege": ticket.tick_siege.parse::<i64>().unwrap_or(0),
             "phone": ticket.tick_phone,
@@ -83,7 +85,7 @@ impl SyncManager {
         });
 
         let response = client
-            .post(format!("{}/sellBillet.php", self.api_base_url))
+            .post(format!("{}/sellbillet", self.api_base_url))
             .json(&payload)
             .send()
             .await
@@ -130,7 +132,7 @@ impl SyncManager {
         });
 
         let response = client
-            .post(format!("{}/createColis.php", self.api_base_url))
+            .post(format!("{}/createcolis_v2", self.api_base_url))
             .json(&payload)
             .send()
             .await
@@ -169,7 +171,7 @@ impl SyncManager {
         });
 
         let response = client
-            .post(format!("{}/createBagage.php", self.api_base_url))
+            .post(format!("{}/createbagage", self.api_base_url))
             .json(&payload)
             .send()
             .await
@@ -240,21 +242,43 @@ pub async fn start_sync_worker(
         // Synchroniser les tickets en attente
         if let Ok(tickets) = get_pending_tickets(&conn) {
             for ticket in tickets {
-                match sync_manager.sync_ticket(&ticket).await {
-                    Ok(remote_id) => {
-                        if let Some(local_id) = ticket.id {
-                            let _ = update_ticket_remote_id(&conn, local_id, remote_id);
-                            println!("✅ Ticket {} synchronisé avec succès", local_id);
+                // Récupérer le remote_id du départ associé
+                let departure_remote_id = conn
+                    .query_row(
+                        "SELECT remote_id FROM departures WHERE id = ?1",
+                        rusqlite::params![ticket.tick_depart],
+                        |row| row.get::<_, Option<i64>>(0),
+                    )
+                    .ok()
+                    .flatten();
+
+                if let Some(remote_id) = departure_remote_id {
+                    // Le départ a été synchronisé, on peut synchroniser le ticket
+                    match sync_manager.sync_ticket(&ticket, remote_id).await {
+                        Ok(ticket_remote_id) => {
+                            if let Some(local_id) = ticket.id {
+                                let _ = update_ticket_remote_id(&conn, local_id, ticket_remote_id);
+                                println!("✅ Ticket {} synchronisé avec succès (remote_id: {})", local_id, ticket_remote_id);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("❌ Erreur sync ticket {:?}: {}", ticket.id, e);
+                            if let Some(local_id) = ticket.id {
+                                let _ = conn.execute(
+                                    "UPDATE tickets SET sync_status = 'error', sync_error = ?1, last_sync_attempt = datetime('now') WHERE id = ?2",
+                                    rusqlite::params![e, local_id],
+                                );
+                            }
                         }
                     }
-                    Err(e) => {
-                        eprintln!("❌ Erreur sync ticket {:?}: {}", ticket.id, e);
-                        if let Some(local_id) = ticket.id {
-                            let _ = conn.execute(
-                                "UPDATE tickets SET sync_status = 'error', sync_error = ?1, last_sync_attempt = datetime('now') WHERE id = ?2",
-                                rusqlite::params![e, local_id],
-                            );
-                        }
+                } else {
+                    // Le départ n'a pas encore été synchronisé
+                    println!("⏳ Ticket {:?} en attente: le départ {} doit être synchronisé d'abord", ticket.id, ticket.tick_depart);
+                    if let Some(local_id) = ticket.id {
+                        let _ = conn.execute(
+                            "UPDATE tickets SET sync_error = 'En attente de la synchronisation du départ', last_sync_attempt = datetime('now') WHERE id = ?1",
+                            rusqlite::params![local_id],
+                        );
                     }
                 }
             }
