@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authApi, ApiError, gareApi, destinationApi } from '../services/api';
-import { offlineAgenceApi, offlineDestinationApi } from '../services/offline-api';
+import { authApi, ApiError, gareApi, destinationApi, departureApi } from '../services/api';
+import { offlineAgenceApi, offlineDestinationApi, offlineDepartureApi } from '../services/offline-api';
 
 interface User {
   id: string;
@@ -124,6 +124,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error) {
       console.error('❌ [AUTH] Erreur sync destinations:', error);
+      // Ne pas bloquer la connexion si la sync échoue
+    }
+
+    // Synchroniser les départs
+    try {
+      console.log('📡 [AUTH] Chargement des départs...');
+      const departuresResponse = await departureApi.loadAllDepartures(userId);
+
+      if (departuresResponse.status === 200 && departuresResponse.data) {
+        console.log(`📦 [AUTH] ${departuresResponse.data.length} départ(s) reçu(s) de l'API`);
+        const count = await offlineDepartureApi.syncFromOnline(departuresResponse.data);
+        console.log(`✅ [AUTH] ${count} départs synchronisés en local`);
+      } else {
+        console.warn('⚠️ [AUTH] Pas de départs reçus:', departuresResponse.msg);
+      }
+    } catch (error) {
+      console.error('❌ [AUTH] Erreur sync départs:', error);
       // Ne pas bloquer la connexion si la sync échoue
     }
 

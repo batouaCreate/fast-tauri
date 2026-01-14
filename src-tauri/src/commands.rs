@@ -1,5 +1,5 @@
 use crate::db::{models::*, operations::*, Database};
-use crate::db::operations::{sync_agences_from_api, get_all_agences, sync_destinations_from_api, get_all_destinations, get_destinations_by_agence};
+use crate::db::operations::{sync_agences_from_api, get_all_agences, sync_destinations_from_api, get_all_destinations, get_destinations_by_agence, sync_departures_from_api};
 use tauri::State;
 use std::sync::Mutex;
 
@@ -38,6 +38,34 @@ pub fn get_departure_by_id_offline(
     let db = state.db.lock().map_err(|e| format!("Lock error: {}", e))?;
     get_departure_by_id(&db.conn, id)
         .map_err(|e| format!("DB error: {}", e))
+}
+
+#[tauri::command]
+pub fn sync_departures(
+    state: State<AppState>,
+    departures_json: String,
+) -> Result<usize, String> {
+    println!("🔄 [RUST] sync_departures appelé");
+    println!("📊 [RUST] JSON reçu (taille): {} bytes", departures_json.len());
+
+    let db = state.db.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    let departures_data: Vec<serde_json::Value> = serde_json::from_str(&departures_json)
+        .map_err(|e| {
+            println!("❌ [RUST] Erreur parsing JSON: {}", e);
+            format!("JSON parse error: {}", e)
+        })?;
+
+    println!("📦 [RUST] Nombre de départs à synchroniser: {}", departures_data.len());
+
+    let result = sync_departures_from_api(&db.conn, departures_data)
+        .map_err(|e| {
+            println!("❌ [RUST] Erreur DB: {}", e);
+            format!("DB error: {}", e)
+        })?;
+
+    println!("✅ [RUST] {} départs synchronisés avec succès", result);
+    Ok(result)
 }
 
 // ============== TICKETS ==============

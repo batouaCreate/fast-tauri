@@ -642,3 +642,53 @@ pub fn get_destinations_by_agence(conn: &Connection, agence_id: i64) -> Result<V
 
     destinations.collect()
 }
+
+// Synchroniser les départs depuis l'API
+pub fn sync_departures_from_api(conn: &Connection, departures_data: Vec<serde_json::Value>) -> Result<usize> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut count = 0;
+
+    for dep in departures_data {
+        let remote_id = dep["dep_id"].as_i64().unwrap_or(0);
+
+        // Utiliser INSERT OR REPLACE pour éviter les doublons
+        // Note: On marque les départs provenant de l'API comme 'synced' car ils existent déjà sur le serveur
+        conn.execute(
+            "INSERT OR REPLACE INTO departures (
+                remote_id, dep_ligne, dep_user, dep_numcar, dep_nom, dep_dest,
+                dep_place, dep_chauff, dep_conv, dep_date, dep_heure,
+                dep_fraisroute, dep_lavage, dep_carbur, dep_droitgare, dep_autredep,
+                ag_id, sync_status,
+                created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
+                COALESCE((SELECT created_at FROM departures WHERE remote_id = ?1), ?19),
+                ?20
+            )",
+            params![
+                remote_id,
+                dep["dep_ligne"].as_str(),
+                dep["dep_user"].as_i64().unwrap_or(0),
+                dep["dep_numcar"].as_str().unwrap_or(""),
+                dep["dep_nom"].as_str().unwrap_or(""),
+                dep["dep_dest"].as_str().unwrap_or(""),
+                dep["dep_place"].as_i64().unwrap_or(0),
+                dep["dep_chauff"].as_str().unwrap_or(""),
+                dep["dep_conv"].as_str().unwrap_or(""),
+                dep["dep_date"].as_str().unwrap_or(""),
+                dep["dep_heure"].as_str().unwrap_or(""),
+                dep["dep_fraisroute"].as_i64().unwrap_or(0),
+                dep["dep_lavage"].as_i64().unwrap_or(0),
+                dep["dep_carbur"].as_i64().unwrap_or(0),
+                dep["dep_droitgare"].as_i64().unwrap_or(0),
+                dep["dep_autredep"].as_i64().unwrap_or(0),
+                dep["ag_id"].as_i64().unwrap_or(0),
+                "synced",  // Les départs provenant de l'API sont déjà synchronisés
+                now,
+                now,
+            ],
+        )?;
+        count += 1;
+    }
+
+    Ok(count)
+}

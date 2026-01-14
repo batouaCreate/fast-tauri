@@ -141,6 +141,20 @@ export interface SyncStatus {
 
 // API pour les départs
 export const offlineDepartureApi = {
+  async syncFromOnline(departuresData: any[]): Promise<number> {
+    try {
+      console.log('🔌 Synchronisation départs vers la BD locale:', departuresData.length);
+      const count = await invoke<number>('sync_departures', {
+        departuresJson: JSON.stringify(departuresData),
+      });
+      console.log('✅ Départs synchronisés:', count);
+      return count;
+    } catch (error) {
+      console.error('❌ Erreur sync départs:', error);
+      throw error;
+    }
+  },
+
   async create(request: {
     user: number;
     dep: string;

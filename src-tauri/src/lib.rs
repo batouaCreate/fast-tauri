@@ -72,6 +72,7 @@ pub fn run() {
             commands::create_departure_offline,
             commands::get_all_departures_offline,
             commands::get_departure_by_id_offline,
+            commands::sync_departures,
             commands::sell_ticket_offline,
             commands::get_all_tickets_offline,
             commands::get_tickets_by_departure_offline,
