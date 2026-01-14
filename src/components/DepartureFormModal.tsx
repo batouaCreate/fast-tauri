@@ -62,6 +62,7 @@ const DepartureFormModal: React.FC<DepartureFormModalProps> = ({ isOpen, onClose
       // Convertir les agences offline en format Gare pour compatibilité
       const garesData: Gare[] = agences.map(agence => ({
         ag_id: agence.remote_id || 0,
+        ag_etp: 0,
         ag_code: agence.ag_code || '',
         ag_nom: agence.ag_nom,
         ag_phone: agence.ag_phone || '',
@@ -70,6 +71,7 @@ const DepartureFormModal: React.FC<DepartureFormModalProps> = ({ isOpen, onClose
         ag_devise: agence.ag_devise || '',
         ag_prefix: agence.ag_prefix || '',
         ag_stat: agence.ag_stat || '',
+        ag_create: agence.created_at,
       }));
 
       setGares(garesData);
