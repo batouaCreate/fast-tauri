@@ -25,7 +25,7 @@ build-windows:
   only:
     - develop
     - main
-    - tags
+    - offline
 
 build-macos:
   stage: build
@@ -44,4 +44,4 @@ build-macos:
   only:
     - develop
     - main
-    - tags
+    - offline

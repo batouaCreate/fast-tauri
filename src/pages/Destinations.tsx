@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapPin, Navigation } from 'lucide-react';
-import { destinationApi, Destination } from '../services/api';
+import { Destination } from '../services/api';
+import { offlineDestinationApi } from '../services/offline-api';
 import { useToast } from '../contexts/ToastContext';
 import DestinationFormModal from '../components/DestinationFormModal';
 
@@ -24,10 +25,25 @@ const Destinations: React.FC = () => {
         return;
       }
 
-      const response = await destinationApi.loadDest(parseInt(agenceId));
-      setDestinations(response.data);
+      console.log('📡 [DESTINATIONS] Chargement des destinations depuis la BD locale...');
+
+      // Charger depuis la base de données locale
+      const offlineDestinations = await offlineDestinationApi.getByAgence(parseInt(agenceId));
+      console.log(`✅ [DESTINATIONS] ${offlineDestinations.length} destination(s) chargée(s)`);
+
+      // Convertir en format Destination
+      const destinationsData: Destination[] = offlineDestinations.map(dest => ({
+        dest_id: dest.remote_id || 0,
+        dest_user: dest.dest_user,
+        dest_agence: dest.dest_agence,
+        dest_ville: dest.dest_ville,
+        dest_price: dest.dest_price,
+        dest_create: dest.created_at,
+      }));
+
+      setDestinations(destinationsData);
     } catch (error: any) {
-      console.error('Erreur lors du chargement des destinations:', error);
+      console.error('❌ [DESTINATIONS] Erreur lors du chargement des destinations:', error);
       showToast('error', 'Erreur', error.message || 'Erreur lors du chargement des destinations');
     } finally {
       setLoading(false);

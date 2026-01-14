@@ -1,0 +1,644 @@
+use super::models::*;
+use rusqlite::{params, Connection, Result};
+use chrono::Utc;
+
+// ============== DEPARTURES ==============
+
+pub fn create_departure(conn: &Connection, req: &CreateDepartureRequest, ag_id: i64) -> Result<Departure> {
+    let now = Utc::now().to_rfc3339();
+
+    conn.execute(
+        "INSERT INTO departures (
+            dep_user, dep_numcar, dep_nom, dep_dest, dep_place,
+            dep_chauff, dep_conv, dep_date, dep_heure, ag_id,
+            created_at, updated_at, sync_status
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        params![
+            req.user,
+            req.car,
+            req.dep,
+            req.dest,
+            req.place,
+            req.chauff,
+            req.conv,
+            req.datedep,
+            req.hdep,
+            ag_id,
+            now,
+            now,
+            "pending"
+        ],
+    )?;
+
+    let id = conn.last_insert_rowid();
+    get_departure_by_id(conn, id)
+}
+
+pub fn get_departure_by_id(conn: &Connection, id: i64) -> Result<Departure> {
+    conn.query_row(
+        "SELECT id, remote_id, dep_ligne, dep_user, dep_numcar, dep_nom, dep_dest,
+                dep_place, dep_chauff, dep_conv, dep_date, dep_heure,
+                dep_fraisroute, dep_lavage, dep_carbur, dep_droitgare, dep_autredep,
+                ag_id, created_at, updated_at, sync_status, last_sync_attempt, sync_error
+         FROM departures WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(Departure {
+                id: row.get(0)?,
+                remote_id: row.get(1)?,
+                dep_ligne: row.get(2)?,
+                dep_user: row.get(3)?,
+                dep_numcar: row.get(4)?,
+                dep_nom: row.get(5)?,
+                dep_dest: row.get(6)?,
+                dep_place: row.get(7)?,
+                dep_chauff: row.get(8)?,
+                dep_conv: row.get(9)?,
+                dep_date: row.get(10)?,
+                dep_heure: row.get(11)?,
+                dep_fraisroute: row.get(12)?,
+                dep_lavage: row.get(13)?,
+                dep_carbur: row.get(14)?,
+                dep_droitgare: row.get(15)?,
+                dep_autredep: row.get(16)?,
+                ag_id: row.get(17)?,
+                created_at: row.get(18)?,
+                updated_at: row.get(19)?,
+                sync_status: row.get(20)?,
+                last_sync_attempt: row.get(21)?,
+                sync_error: row.get(22)?,
+            })
+        },
+    )
+}
+
+pub fn get_all_departures(conn: &Connection, user_id: i64) -> Result<Vec<Departure>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, dep_ligne, dep_user, dep_numcar, dep_nom, dep_dest,
+                dep_place, dep_chauff, dep_conv, dep_date, dep_heure,
+                dep_fraisroute, dep_lavage, dep_carbur, dep_droitgare, dep_autredep,
+                ag_id, created_at, updated_at, sync_status, last_sync_attempt, sync_error
+         FROM departures WHERE dep_user = ?1
+         ORDER BY dep_date DESC, dep_heure DESC"
+    )?;
+
+    let departures = stmt.query_map(params![user_id], |row| {
+        Ok(Departure {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            dep_ligne: row.get(2)?,
+            dep_user: row.get(3)?,
+            dep_numcar: row.get(4)?,
+            dep_nom: row.get(5)?,
+            dep_dest: row.get(6)?,
+            dep_place: row.get(7)?,
+            dep_chauff: row.get(8)?,
+            dep_conv: row.get(9)?,
+            dep_date: row.get(10)?,
+            dep_heure: row.get(11)?,
+            dep_fraisroute: row.get(12)?,
+            dep_lavage: row.get(13)?,
+            dep_carbur: row.get(14)?,
+            dep_droitgare: row.get(15)?,
+            dep_autredep: row.get(16)?,
+            ag_id: row.get(17)?,
+            created_at: row.get(18)?,
+            updated_at: row.get(19)?,
+            sync_status: row.get(20)?,
+            last_sync_attempt: row.get(21)?,
+            sync_error: row.get(22)?,
+        })
+    })?;
+
+    departures.collect()
+}
+
+pub fn update_departure_remote_id(conn: &Connection, local_id: i64, remote_id: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE departures SET remote_id = ?1, sync_status = 'synced', updated_at = ?2 WHERE id = ?3",
+        params![remote_id, Utc::now().to_rfc3339(), local_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_pending_departures(conn: &Connection) -> Result<Vec<Departure>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, dep_ligne, dep_user, dep_numcar, dep_nom, dep_dest,
+                dep_place, dep_chauff, dep_conv, dep_date, dep_heure,
+                dep_fraisroute, dep_lavage, dep_carbur, dep_droitgare, dep_autredep,
+                ag_id, created_at, updated_at, sync_status, last_sync_attempt, sync_error
+         FROM departures WHERE sync_status = 'pending' ORDER BY created_at ASC"
+    )?;
+
+    let departures = stmt.query_map([], |row| {
+        Ok(Departure {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            dep_ligne: row.get(2)?,
+            dep_user: row.get(3)?,
+            dep_numcar: row.get(4)?,
+            dep_nom: row.get(5)?,
+            dep_dest: row.get(6)?,
+            dep_place: row.get(7)?,
+            dep_chauff: row.get(8)?,
+            dep_conv: row.get(9)?,
+            dep_date: row.get(10)?,
+            dep_heure: row.get(11)?,
+            dep_fraisroute: row.get(12)?,
+            dep_lavage: row.get(13)?,
+            dep_carbur: row.get(14)?,
+            dep_droitgare: row.get(15)?,
+            dep_autredep: row.get(16)?,
+            ag_id: row.get(17)?,
+            created_at: row.get(18)?,
+            updated_at: row.get(19)?,
+            sync_status: row.get(20)?,
+            last_sync_attempt: row.get(21)?,
+            sync_error: row.get(22)?,
+        })
+    })?;
+
+    departures.collect()
+}
+
+// ============== TICKETS ==============
+
+pub fn create_ticket(conn: &Connection, req: &SellTicketRequest) -> Result<Ticket> {
+    let now = Utc::now().to_rfc3339();
+
+    conn.execute(
+        "INSERT INTO tickets (
+            tick_user, tick_depart, tick_price, tick_reduc, tick_dest,
+            tick_nom, tick_phone, tick_siege, tick_nature, tick_method,
+            created_at, updated_at, sync_status
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        params![
+            req.user,
+            req.depart,
+            req.price.to_string(),
+            req.reduction,
+            req.dest,
+            req.voyageur,
+            req.phone,
+            req.siege.to_string(),
+            req.nature,
+            req.method,
+            now,
+            now,
+            "pending"
+        ],
+    )?;
+
+    let id = conn.last_insert_rowid();
+    get_ticket_by_id(conn, id)
+}
+
+pub fn get_ticket_by_id(conn: &Connection, id: i64) -> Result<Ticket> {
+    conn.query_row(
+        "SELECT id, remote_id, tick_vtick, tick_user, tick_depart, tick_price,
+                tick_reduc, tick_dest, tick_nom, tick_phone, tick_siege,
+                tick_nature, tick_method, tick_type,
+                created_at, updated_at, sync_status, last_sync_attempt, sync_error
+         FROM tickets WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(Ticket {
+                id: row.get(0)?,
+                remote_id: row.get(1)?,
+                tick_vtick: row.get(2)?,
+                tick_user: row.get(3)?,
+                tick_depart: row.get(4)?,
+                tick_price: row.get(5)?,
+                tick_reduc: row.get(6)?,
+                tick_dest: row.get(7)?,
+                tick_nom: row.get(8)?,
+                tick_phone: row.get(9)?,
+                tick_siege: row.get(10)?,
+                tick_nature: row.get(11)?,
+                tick_method: row.get(12)?,
+                tick_type: row.get(13)?,
+                created_at: row.get(14)?,
+                updated_at: row.get(15)?,
+                sync_status: row.get(16)?,
+                last_sync_attempt: row.get(17)?,
+                sync_error: row.get(18)?,
+            })
+        },
+    )
+}
+
+pub fn get_all_tickets(conn: &Connection, user_id: i64) -> Result<Vec<Ticket>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, tick_vtick, tick_user, tick_depart, tick_price,
+                tick_reduc, tick_dest, tick_nom, tick_phone, tick_siege,
+                tick_nature, tick_method, tick_type,
+                created_at, updated_at, sync_status, last_sync_attempt, sync_error
+         FROM tickets WHERE tick_user = ?1
+         ORDER BY created_at DESC"
+    )?;
+
+    let tickets = stmt.query_map(params![user_id], |row| {
+        Ok(Ticket {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            tick_vtick: row.get(2)?,
+            tick_user: row.get(3)?,
+            tick_depart: row.get(4)?,
+            tick_price: row.get(5)?,
+            tick_reduc: row.get(6)?,
+            tick_dest: row.get(7)?,
+            tick_nom: row.get(8)?,
+            tick_phone: row.get(9)?,
+            tick_siege: row.get(10)?,
+            tick_nature: row.get(11)?,
+            tick_method: row.get(12)?,
+            tick_type: row.get(13)?,
+            created_at: row.get(14)?,
+            updated_at: row.get(15)?,
+            sync_status: row.get(16)?,
+            last_sync_attempt: row.get(17)?,
+            sync_error: row.get(18)?,
+        })
+    })?;
+
+    tickets.collect()
+}
+
+pub fn get_tickets_by_departure(conn: &Connection, departure_id: i64) -> Result<Vec<Ticket>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, tick_vtick, tick_user, tick_depart, tick_price,
+                tick_reduc, tick_dest, tick_nom, tick_phone, tick_siege,
+                tick_nature, tick_method, tick_type,
+                created_at, updated_at, sync_status, last_sync_attempt, sync_error
+         FROM tickets WHERE tick_depart = ?1
+         ORDER BY created_at DESC"
+    )?;
+
+    let tickets = stmt.query_map(params![departure_id], |row| {
+        Ok(Ticket {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            tick_vtick: row.get(2)?,
+            tick_user: row.get(3)?,
+            tick_depart: row.get(4)?,
+            tick_price: row.get(5)?,
+            tick_reduc: row.get(6)?,
+            tick_dest: row.get(7)?,
+            tick_nom: row.get(8)?,
+            tick_phone: row.get(9)?,
+            tick_siege: row.get(10)?,
+            tick_nature: row.get(11)?,
+            tick_method: row.get(12)?,
+            tick_type: row.get(13)?,
+            created_at: row.get(14)?,
+            updated_at: row.get(15)?,
+            sync_status: row.get(16)?,
+            last_sync_attempt: row.get(17)?,
+            sync_error: row.get(18)?,
+        })
+    })?;
+
+    tickets.collect()
+}
+
+pub fn update_ticket_remote_id(conn: &Connection, local_id: i64, remote_id: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE tickets SET remote_id = ?1, sync_status = 'synced', updated_at = ?2 WHERE id = ?3",
+        params![remote_id, Utc::now().to_rfc3339(), local_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_pending_tickets(conn: &Connection) -> Result<Vec<Ticket>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, tick_vtick, tick_user, tick_depart, tick_price,
+                tick_reduc, tick_dest, tick_nom, tick_phone, tick_siege,
+                tick_nature, tick_method, tick_type,
+                created_at, updated_at, sync_status, last_sync_attempt, sync_error
+         FROM tickets WHERE sync_status = 'pending' ORDER BY created_at ASC"
+    )?;
+
+    let tickets = stmt.query_map([], |row| {
+        Ok(Ticket {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            tick_vtick: row.get(2)?,
+            tick_user: row.get(3)?,
+            tick_depart: row.get(4)?,
+            tick_price: row.get(5)?,
+            tick_reduc: row.get(6)?,
+            tick_dest: row.get(7)?,
+            tick_nom: row.get(8)?,
+            tick_phone: row.get(9)?,
+            tick_siege: row.get(10)?,
+            tick_nature: row.get(11)?,
+            tick_method: row.get(12)?,
+            tick_type: row.get(13)?,
+            created_at: row.get(14)?,
+            updated_at: row.get(15)?,
+            sync_status: row.get(16)?,
+            last_sync_attempt: row.get(17)?,
+            sync_error: row.get(18)?,
+        })
+    })?;
+
+    tickets.collect()
+}
+
+// ============== COLIS ==============
+
+pub fn create_colis(conn: &Connection, req: &CreateColisRequest, numcar: &str) -> Result<Colis> {
+    let now = Utc::now().to_rfc3339();
+
+    conn.execute(
+        "INSERT INTO colis (
+            exp_user, exp_depart, exp_numcar, exp_colnat, exp_colval, exp_frais,
+            exp_coldesc, exp_exp, exp_phonexp, exp_dest, exp_destphone, exp_agdest,
+            created_at, updated_at, sync_status
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+        params![
+            req.user,
+            req.depart,
+            numcar,
+            req.nature,
+            req.valeur.to_string(),
+            req.frais.to_string(),
+            req.desc,
+            req.exp,
+            req.phonexp,
+            req.benef,
+            req.phonedest,
+            req.agdest.to_string(),
+            now,
+            now,
+            "pending"
+        ],
+    )?;
+
+    let id = conn.last_insert_rowid();
+    get_colis_by_id(conn, id)
+}
+
+pub fn get_colis_by_id(conn: &Connection, id: i64) -> Result<Colis> {
+    conn.query_row(
+        "SELECT id, remote_id, exp_user, exp_type, exp_depart, exp_bord, exp_numcar,
+                exp_colnat, exp_colval, exp_frais, exp_stat, exp_coldesc, exp_code,
+                exp_exp, exp_phonexp, exp_dest, exp_destphone, exp_agdest, exp_siege,
+                exp_img, exp_imgret, exp_destdevice,
+                created_at, updated_at, sync_status, last_sync_attempt, sync_error
+         FROM colis WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(Colis {
+                id: row.get(0)?,
+                remote_id: row.get(1)?,
+                exp_user: row.get(2)?,
+                exp_type: row.get(3)?,
+                exp_depart: row.get(4)?,
+                exp_bord: row.get(5)?,
+                exp_numcar: row.get(6)?,
+                exp_colnat: row.get(7)?,
+                exp_colval: row.get(8)?,
+                exp_frais: row.get(9)?,
+                exp_stat: row.get(10)?,
+                exp_coldesc: row.get(11)?,
+                exp_code: row.get(12)?,
+                exp_exp: row.get(13)?,
+                exp_phonexp: row.get(14)?,
+                exp_dest: row.get(15)?,
+                exp_destphone: row.get(16)?,
+                exp_agdest: row.get(17)?,
+                exp_siege: row.get(18)?,
+                exp_img: row.get(19)?,
+                exp_imgret: row.get(20)?,
+                exp_destdevice: row.get(21)?,
+                created_at: row.get(22)?,
+                updated_at: row.get(23)?,
+                sync_status: row.get(24)?,
+                last_sync_attempt: row.get(25)?,
+                sync_error: row.get(26)?,
+            })
+        },
+    )
+}
+
+// ============== BAGAGES ==============
+
+pub fn create_bagage(conn: &Connection, req: &CreateBagageRequest, numcar: &str) -> Result<Bagage> {
+    let now = Utc::now().to_rfc3339();
+
+    conn.execute(
+        "INSERT INTO bagages (
+            exp_user, exp_depart, exp_numcar, exp_colnat, exp_colval, exp_frais,
+            exp_coldesc, exp_exp, exp_phonexp, exp_dest, exp_siege,
+            created_at, updated_at, sync_status
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        params![
+            req.user,
+            req.depart,
+            numcar,
+            req.nature,
+            req.valeur.to_string(),
+            req.frais.to_string(),
+            req.desc,
+            req.exp,
+            req.phonexp,
+            req.dest,
+            req.siege.to_string(),
+            now,
+            now,
+            "pending"
+        ],
+    )?;
+
+    let id = conn.last_insert_rowid();
+    get_bagage_by_id(conn, id)
+}
+
+pub fn get_bagage_by_id(conn: &Connection, id: i64) -> Result<Bagage> {
+    conn.query_row(
+        "SELECT id, remote_id, exp_user, exp_type, exp_depart, exp_bord, exp_numcar,
+                exp_colnat, exp_colval, exp_frais, exp_stat, exp_coldesc, exp_code,
+                exp_exp, exp_phonexp, exp_dest, exp_siege, exp_img, exp_imgret,
+                created_at, updated_at, sync_status, last_sync_attempt, sync_error
+         FROM bagages WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(Bagage {
+                id: row.get(0)?,
+                remote_id: row.get(1)?,
+                exp_user: row.get(2)?,
+                exp_type: row.get(3)?,
+                exp_depart: row.get(4)?,
+                exp_bord: row.get(5)?,
+                exp_numcar: row.get(6)?,
+                exp_colnat: row.get(7)?,
+                exp_colval: row.get(8)?,
+                exp_frais: row.get(9)?,
+                exp_stat: row.get(10)?,
+                exp_coldesc: row.get(11)?,
+                exp_code: row.get(12)?,
+                exp_exp: row.get(13)?,
+                exp_phonexp: row.get(14)?,
+                exp_dest: row.get(15)?,
+                exp_siege: row.get(16)?,
+                exp_img: row.get(17)?,
+                exp_imgret: row.get(18)?,
+                created_at: row.get(19)?,
+                updated_at: row.get(20)?,
+                sync_status: row.get(21)?,
+                last_sync_attempt: row.get(22)?,
+                sync_error: row.get(23)?,
+            })
+        },
+    )
+}
+
+// ============== AGENCES ==============
+
+pub fn sync_agences_from_api(conn: &Connection, agences_data: Vec<serde_json::Value>) -> Result<usize> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut count = 0;
+
+    for agence in agences_data {
+        let remote_id = agence["ag_id"].as_i64().unwrap_or(0);
+
+        // Utiliser INSERT OR REPLACE pour éviter les doublons
+        conn.execute(
+            "INSERT OR REPLACE INTO agences (
+                remote_id, ag_code, ag_nom, ag_phone, ag_pays, ag_ville,
+                ag_devise, ag_prefix, ag_stat, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                COALESCE((SELECT created_at FROM agences WHERE remote_id = ?1), ?10),
+                ?11
+            )",
+            params![
+                remote_id,
+                agence["ag_code"].as_str(),
+                agence["ag_nom"].as_str().unwrap_or(""),
+                agence["ag_phone"].as_str(),
+                agence["ag_pays"].as_str(),
+                agence["ag_ville"].as_str(),
+                agence["ag_devise"].as_str(),
+                agence["ag_prefix"].as_str(),
+                agence["ag_stat"].as_str(),
+                now,
+                now,
+            ],
+        )?;
+        count += 1;
+    }
+
+    Ok(count)
+}
+
+pub fn get_all_agences(conn: &Connection) -> Result<Vec<Agence>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, ag_code, ag_nom, ag_phone, ag_pays, ag_ville,
+                ag_devise, ag_prefix, ag_stat, created_at, updated_at
+         FROM agences
+         ORDER BY ag_nom ASC"
+    )?;
+
+    let agences = stmt.query_map([], |row| {
+        Ok(Agence {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            ag_code: row.get(2)?,
+            ag_nom: row.get(3)?,
+            ag_phone: row.get(4)?,
+            ag_pays: row.get(5)?,
+            ag_ville: row.get(6)?,
+            ag_devise: row.get(7)?,
+            ag_prefix: row.get(8)?,
+            ag_stat: row.get(9)?,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
+        })
+    })?;
+
+    agences.collect()
+}
+
+// ============== DESTINATIONS ==============
+
+pub fn sync_destinations_from_api(conn: &Connection, destinations_data: Vec<serde_json::Value>) -> Result<usize> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut count = 0;
+
+    for dest in destinations_data {
+        let remote_id = dest["dest_id"].as_i64().unwrap_or(0);
+
+        // Utiliser INSERT OR REPLACE pour éviter les doublons
+        conn.execute(
+            "INSERT OR REPLACE INTO destinations (
+                remote_id, dest_user, dest_agence, dest_ville, dest_price,
+                created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5,
+                COALESCE((SELECT created_at FROM destinations WHERE remote_id = ?1), ?6),
+                ?7
+            )",
+            params![
+                remote_id,
+                dest["dest_user"].as_i64().unwrap_or(0),
+                dest["dest_agence"].as_i64().unwrap_or(0),
+                dest["dest_ville"].as_str().unwrap_or(""),
+                dest["dest_price"].as_str().unwrap_or("0"),
+                now,
+                now,
+            ],
+        )?;
+        count += 1;
+    }
+
+    Ok(count)
+}
+
+pub fn get_all_destinations(conn: &Connection) -> Result<Vec<Destination>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, dest_user, dest_agence, dest_ville, dest_price,
+                created_at, updated_at
+         FROM destinations
+         ORDER BY dest_ville ASC"
+    )?;
+
+    let destinations = stmt.query_map([], |row| {
+        Ok(Destination {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            dest_user: row.get(2)?,
+            dest_agence: row.get(3)?,
+            dest_ville: row.get(4)?,
+            dest_price: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
+        })
+    })?;
+
+    destinations.collect()
+}
+
+pub fn get_destinations_by_agence(conn: &Connection, agence_id: i64) -> Result<Vec<Destination>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, dest_user, dest_agence, dest_ville, dest_price,
+                created_at, updated_at
+         FROM destinations
+         WHERE dest_agence = ?1
+         ORDER BY dest_ville ASC"
+    )?;
+
+    let destinations = stmt.query_map(params![agence_id], |row| {
+        Ok(Destination {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            dest_user: row.get(2)?,
+            dest_agence: row.get(3)?,
+            dest_ville: row.get(4)?,
+            dest_price: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
+        })
+    })?;
+
+    destinations.collect()
+}

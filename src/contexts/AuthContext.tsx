@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authApi, ApiError } from '../services/api';
+import { authApi, ApiError, gareApi, destinationApi } from '../services/api';
+import { offlineAgenceApi, offlineDestinationApi } from '../services/offline-api';
 
 interface User {
   id: string;
@@ -47,6 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (phone: string, password: string) => {
     try {
+      console.log('🔐 [AUTH] Tentative de connexion...');
       const response = await authApi.login(phone, password);
 
       const authenticatedUser: User = {
@@ -77,10 +79,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('accessToken', tempToken);
       localStorage.setItem('userId', response.usid.toString());
       localStorage.setItem('agenceId', response.agid.toString());
+
+      console.log('✅ [AUTH] Connexion réussie, userId:', response.usid, 'agenceId:', response.agid);
+
+      // Synchroniser les données de référence en arrière-plan
+      syncReferenceData(response.usid, response.agid);
     } catch (error) {
       const apiError = error as ApiError;
       throw new Error(apiError.message || 'Erreur de connexion');
     }
+  };
+
+  const syncReferenceData = async (userId: number, agenceId: number) => {
+    console.log('📡 [AUTH] Synchronisation des données de référence...');
+
+    // Synchroniser les agences (gares de destination)
+    try {
+      console.log('📡 [AUTH] Chargement des agences...');
+      const agencesResponse = await gareApi.loadGareDest(userId);
+
+      if (agencesResponse.status === 200 && agencesResponse.data) {
+        console.log(`📦 [AUTH] ${agencesResponse.data.length} agences reçues de l'API`);
+        const count = await offlineAgenceApi.syncFromOnline(agencesResponse.data);
+        console.log(`✅ [AUTH] ${count} agences synchronisées en local`);
+      } else {
+        console.warn('⚠️ [AUTH] Pas d\'agences reçues:', agencesResponse.msg);
+      }
+    } catch (error) {
+      console.error('❌ [AUTH] Erreur sync agences:', error);
+      // Ne pas bloquer la connexion si la sync échoue
+    }
+
+    // Synchroniser les destinations
+    try {
+      console.log('📡 [AUTH] Chargement des destinations...');
+      const destResponse = await destinationApi.loadDest(agenceId);
+
+      if (destResponse.status === 200 && destResponse.data) {
+        console.log(`📦 [AUTH] ${destResponse.data.length} destinations reçues de l'API`);
+        const count = await offlineDestinationApi.syncFromOnline(destResponse.data);
+        console.log(`✅ [AUTH] ${count} destinations synchronisées en local`);
+      } else {
+        console.warn('⚠️ [AUTH] Pas de destinations reçues:', destResponse.msg);
+      }
+    } catch (error) {
+      console.error('❌ [AUTH] Erreur sync destinations:', error);
+      // Ne pas bloquer la connexion si la sync échoue
+    }
+
+    console.log('✅ [AUTH] Synchronisation des données de référence terminée');
   };
 
   const register = async (name: string, email: string, _password: string) => {

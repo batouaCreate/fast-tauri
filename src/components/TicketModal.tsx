@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, CreditCard, Loader2, Printer, MapPin } from 'lucide-react';
-import { Departure, siegeApi, Siege, destinationApi, Destination, ticketApi } from '../services/api';
+import { Departure, Destination } from '../services/api';
+import { offlineDestinationApi, offlineTicketApi } from '../services/offline-api';
 import { useToast } from '../contexts/ToastContext';
 import { ThermalPrinter, TicketBuilder } from '../services/printer';
 import { PhoneInput } from 'react-international-phone';
@@ -37,7 +38,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
   const [isSelling, setIsSelling] = useState(false);
   const { error: showError, success: showSuccess } = useToast();
 
-  // Charger les destinations disponibles
+  // Charger les destinations disponibles depuis la BD locale
   useEffect(() => {
     const loadDestinations = async () => {
       const agenceId = localStorage.getItem('agenceId');
@@ -50,12 +51,25 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
 
       try {
         setIsLoadingDestinations(true);
-        console.log('📍 Chargement des destinations pour agence:', agenceId);
-        const response = await destinationApi.loadDest(parseInt(agenceId));
-        console.log('✅ Destinations trouvées:', response.data);
-        setDestinations(response.data);
+        console.log('📍 [TICKET MODAL] Chargement des destinations depuis la BD locale...');
+
+        // Charger depuis la base de données locale
+        const offlineDestinations = await offlineDestinationApi.getByAgence(parseInt(agenceId));
+        console.log(`✅ [TICKET MODAL] ${offlineDestinations.length} destination(s) chargée(s)`);
+
+        // Convertir en format Destination
+        const destinationsData: Destination[] = offlineDestinations.map(dest => ({
+          dest_id: dest.remote_id || 0,
+          dest_user: dest.dest_user,
+          dest_agence: dest.dest_agence,
+          dest_ville: dest.dest_ville,
+          dest_price: dest.dest_price,
+          dest_create: dest.created_at,
+        }));
+
+        setDestinations(destinationsData);
       } catch (error) {
-        console.error('Erreur lors du chargement des destinations:', error);
+        console.error('❌ [TICKET MODAL] Erreur lors du chargement des destinations:', error);
         showError('Erreur', 'Impossible de charger les destinations');
       } finally {
         setIsLoadingDestinations(false);
@@ -94,38 +108,45 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
     }
   }, [isOpen, showError]);
 
-  // Charger les sièges depuis l'API
+  // Charger les sièges depuis le départ et les tickets vendus
   useEffect(() => {
     const loadSeats = async () => {
       try {
         setIsLoadingSeats(true);
-        const response = await siegeApi.displaySiege(departure.dep_id);
+        console.log('💺 [TICKET MODAL] Génération des sièges pour le départ:', departure.dep_id);
+        console.log('💺 [TICKET MODAL] Nombre de places:', departure.dep_place);
 
-        console.log('📊 Réponse API displaySiege:', response);
-        console.log('📊 Nombre de sièges reçus:', response.data.length);
-        console.log('📊 Premiers sièges:', response.data.slice(0, 5));
-
-        // Transformer les données de l'API en format Seat avec numérotation S{numéro}
-        const transformedSeats: Seat[] = response.data.map((siege: Siege) => {
-          const seatNumber = `S${siege.siege}`;
-          const status = siege.stat === 1 ? 'occupied' : 'available';
-
-          console.log(`💺 Siège: ${seatNumber}, stat: ${siege.stat} -> status: ${status}`);
-
+        // Générer tous les sièges basés sur dep_place
+        const totalSeats = departure.dep_place;
+        const allSeats: Seat[] = Array.from({ length: totalSeats }, (_, i) => {
+          const seatNum = i + 1;
           return {
-            id: seatNumber,
-            number: seatNumber,
-            status: status,
-            price: parseFloat(siege.price),
+            id: `S${seatNum}`,
+            number: `S${seatNum}`,
+            status: 'available',
+            price: 0, // Le prix sera déterminé par la destination sélectionnée
           };
         });
 
-        console.log('✅ Total sièges transformés:', transformedSeats.length);
-        console.log('✅ Sièges occupés:', transformedSeats.filter(s => s.status === 'occupied').length);
-        console.log('✅ Sièges disponibles:', transformedSeats.filter(s => s.status === 'available').length);
+        // Charger les tickets vendus depuis la BD locale
+        const soldTickets = await offlineTicketApi.getByDeparture(departure.dep_id);
+        console.log(`🎫 [TICKET MODAL] ${soldTickets.length} ticket(s) vendu(s) pour ce départ`);
+
+        // Marquer les sièges vendus comme occupés
+        const soldSeats = new Set(soldTickets.map(ticket => `S${ticket.tick_siege}`));
+        const transformedSeats = allSeats.map(seat => {
+          if (soldSeats.has(seat.number)) {
+            return { ...seat, status: 'occupied' as const };
+          }
+          return seat;
+        });
+
+        console.log('✅ [TICKET MODAL] Total sièges:', transformedSeats.length);
+        console.log('✅ [TICKET MODAL] Sièges occupés:', transformedSeats.filter(s => s.status === 'occupied').length);
+        console.log('✅ [TICKET MODAL] Sièges disponibles:', transformedSeats.filter(s => s.status === 'available').length);
         setSeats(transformedSeats);
       } catch (error) {
-        console.error('Erreur lors du chargement des sièges:', error);
+        console.error('❌ [TICKET MODAL] Erreur lors du chargement des sièges:', error);
         showError('Erreur', 'Impossible de charger les sièges');
       } finally {
         setIsLoadingSeats(false);
@@ -135,7 +156,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
     if (isOpen) {
       loadSeats();
     }
-  }, [isOpen, departure.dep_id, showError]);
+  }, [isOpen, departure.dep_id, departure.dep_place, showError]);
 
   const handleSeatClick = (seatId: string) => {
     const seat = seats.find(s => s.id === seatId);
@@ -188,34 +209,33 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
     setSelectedDestination(id || null);
   };
 
-  // Fonction pour recharger les sièges
+  // Fonction pour recharger les sièges depuis la BD locale
   const reloadSeats = async () => {
     try {
       setIsLoadingSeats(true);
-      const response = await siegeApi.displaySiege(departure.dep_id);
+      console.log('💺 [TICKET MODAL] Rechargement des sièges...');
 
-      console.log('📊 Réponse API displaySiege (reload):', response);
-      console.log('📊 Nombre de sièges reçus:', response.data.length);
+      // Charger les tickets vendus depuis la BD locale
+      const soldTickets = await offlineTicketApi.getByDeparture(departure.dep_id);
+      console.log(`🎫 [TICKET MODAL] ${soldTickets.length} ticket(s) vendu(s) pour ce départ`);
 
-      // Transformer les données de l'API en format Seat avec numérotation S{numéro}
-      const transformedSeats: Seat[] = response.data.map((siege: Siege) => {
-        const seatNumber = `S${siege.siege}`;
-        const status = siege.stat === 1 ? 'occupied' : 'available';
-
-        return {
-          id: seatNumber,
-          number: seatNumber,
-          status: status,
-          price: parseFloat(siege.price),
-        };
+      // Marquer les sièges vendus comme occupés
+      const soldSeats = new Set(soldTickets.map(ticket => `S${ticket.tick_siege}`));
+      const updatedSeats = seats.map(seat => {
+        if (soldSeats.has(seat.number)) {
+          return { ...seat, status: 'occupied' as const };
+        }
+        // Réinitialiser les sièges sélectionnés comme disponibles
+        if (seat.status === 'selected') {
+          return { ...seat, status: 'available' as const };
+        }
+        return seat;
       });
 
-      console.log('✅ Total sièges transformés:', transformedSeats.length);
-      console.log('✅ Sièges occupés:', transformedSeats.filter(s => s.status === 'occupied').length);
-      console.log('✅ Sièges disponibles:', transformedSeats.filter(s => s.status === 'available').length);
-      setSeats(transformedSeats);
+      console.log('✅ [TICKET MODAL] Sièges rechargés');
+      setSeats(updatedSeats);
     } catch (error) {
-      console.error('Erreur lors du rechargement des sièges:', error);
+      console.error('❌ [TICKET MODAL] Erreur lors du rechargement des sièges:', error);
       showError('Erreur', 'Impossible de recharger les sièges');
     } finally {
       setIsLoadingSeats(false);
@@ -248,7 +268,8 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
       // Extraire le numéro du siège (enlever le "S")
       const seatNumber = parseInt(selectedSeats[0].replace('S', ''));
 
-      const response = await ticketApi.sellBillet({
+      console.log('💾 [TICKET MODAL] Vente de ticket en local...');
+      const ticket = await offlineTicketApi.sell({
         user: parseInt(userId),
         depart: departure.dep_id,
         dest: selectedDestination,
@@ -261,20 +282,26 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
         nature: 'PAYANT',
       });
 
-      console.log('🎫 Réponse complète sellBillet:', response);
-      console.log('🎫 response.data:', response.data);
-      console.log('🎫 response.data est un tableau?', Array.isArray(response.data));
+      console.log('✅ [TICKET MODAL] Ticket vendu en local:', ticket);
+      showSuccess('Succès', 'Ticket vendu avec succès (sera synchronisé automatiquement)');
 
-      // L'API retourne data comme un tableau [{}], donc on prend le premier élément
-      const ticketData = Array.isArray(response.data) ? response.data[0] : response.data;
-      console.log('🎫 ticketData (premier élément):', ticketData);
-      console.log('🖼️ Logo (etp_img):', ticketData?.etp_img || 'Absent');
+      // Préparer les données pour l'impression
+      const selectedDest = destinations.find(d => d.dest_id === selectedDestination);
+      const ticketData = {
+        tick_id: ticket.id,
+        tick_siege: seatNumber.toString(),
+        tick_nature: 'PAYANT',
+        dep_nom: departure.dep_nom,
+        dep_date: departure.dep_date,
+        dep_heure: departure.dep_heure,
+        ag_nom: departure.ag_nom,
+        dest_ville: selectedDest?.dest_ville || 'N/A',
+        dest_price: totalPrice.toString(),
+      };
 
-      showSuccess('Succès', response.msg || 'Ticket vendu avec succès');
-
-      // Imprimer le ticket si l'API retourne des données
-      if (ticketData && selectedPrinter) {
-        await printTicket(ticketData, ticketData.etp_img);
+      // Imprimer le ticket
+      if (selectedPrinter) {
+        await printTicket(ticketData);
       }
 
       // Réinitialiser le formulaire
@@ -316,7 +343,8 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
       // Extraire le numéro du siège (enlever le "S")
       const seatNumber = parseInt(selectedSeats[0].replace('S', ''));
 
-      const response = await ticketApi.sellBillet({
+      console.log('💾 [TICKET MODAL] Création de ticket gratuit en local...');
+      const ticket = await offlineTicketApi.sell({
         user: parseInt(userId),
         depart: departure.dep_id,
         dest: selectedDestination,
@@ -329,20 +357,26 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
         nature: 'GRATUIT',
       });
 
-      console.log('🎫 Réponse complète sellBillet (gratuit):', response);
-      console.log('🎫 response.data:', response.data);
-      console.log('🎫 response.data est un tableau?', Array.isArray(response.data));
+      console.log('✅ [TICKET MODAL] Ticket gratuit créé en local:', ticket);
+      showSuccess('Succès', 'Ticket gratuit créé avec succès (sera synchronisé automatiquement)');
 
-      // L'API retourne data comme un tableau [{}], donc on prend le premier élément
-      const ticketData = Array.isArray(response.data) ? response.data[0] : response.data;
-      console.log('🎫 ticketData (premier élément):', ticketData);
-      console.log('🖼️ Logo (etp_img):', ticketData?.etp_img || 'Absent');
+      // Préparer les données pour l'impression
+      const selectedDest = destinations.find(d => d.dest_id === selectedDestination);
+      const ticketData = {
+        tick_id: ticket.id,
+        tick_siege: seatNumber.toString(),
+        tick_nature: 'GRATUIT',
+        dep_nom: departure.dep_nom,
+        dep_date: departure.dep_date,
+        dep_heure: departure.dep_heure,
+        ag_nom: departure.ag_nom,
+        dest_ville: selectedDest?.dest_ville || 'N/A',
+        dest_price: totalPrice.toString(),
+      };
 
-      showSuccess('Succès', response.msg || 'Ticket gratuit créé avec succès');
-
-      // Imprimer le ticket si l'API retourne des données
-      if (ticketData && selectedPrinter) {
-        await printTicket(ticketData, ticketData.etp_img);
+      // Imprimer le ticket
+      if (selectedPrinter) {
+        await printTicket(ticketData);
       }
 
       // Réinitialiser le formulaire

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { gareApi, departureApi, Gare } from '../services/api';
+import { Gare } from '../services/api';
+import { offlineAgenceApi, offlineDepartureApi } from '../services/offline-api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
@@ -52,10 +53,28 @@ const DepartureFormModal: React.FC<DepartureFormModalProps> = ({ isOpen, onClose
 
     try {
       setIsLoadingGares(true);
-      const response = await gareApi.loadGareDest(parseInt(user.id));
-      setGares(response.data);
+      console.log('📡 [DEPARTURE FORM] Chargement des agences depuis la BD locale...');
+
+      // Charger depuis la base de données locale
+      const agences = await offlineAgenceApi.getAll();
+      console.log(`✅ [DEPARTURE FORM] ${agences.length} agences chargées depuis la BD locale`);
+
+      // Convertir les agences offline en format Gare pour compatibilité
+      const garesData: Gare[] = agences.map(agence => ({
+        ag_id: agence.remote_id || 0,
+        ag_code: agence.ag_code || '',
+        ag_nom: agence.ag_nom,
+        ag_phone: agence.ag_phone || '',
+        ag_pays: agence.ag_pays || '',
+        ag_ville: agence.ag_ville || '',
+        ag_devise: agence.ag_devise || '',
+        ag_prefix: agence.ag_prefix || '',
+        ag_stat: agence.ag_stat || '',
+      }));
+
+      setGares(garesData);
     } catch (error) {
-      console.error('Erreur lors du chargement des gares:', error);
+      console.error('❌ [DEPARTURE FORM] Erreur lors du chargement des gares:', error);
       showError('Erreur', 'Impossible de charger les destinations');
     } finally {
       setIsLoadingGares(false);
@@ -87,9 +106,10 @@ const DepartureFormModal: React.FC<DepartureFormModalProps> = ({ isOpen, onClose
 
     try {
       setIsSubmitting(true);
+      console.log('💾 [DEPARTURE FORM] Création du départ en local...');
 
-      // Appeler l'API pour créer le départ
-      const response = await departureApi.createDeparture({
+      // Créer le départ dans la base de données locale
+      const departure = await offlineDepartureApi.create({
         user: parseInt(user.id),
         dep: formData.departureNumber,
         dest: parseInt(formData.destination),
@@ -99,9 +119,10 @@ const DepartureFormModal: React.FC<DepartureFormModalProps> = ({ isOpen, onClose
         conv: formData.attendant,
         datedep: formData.departureDate,
         hdep: formData.departureTime,
-      });
+      }, user.agence.id);
 
-      showSuccess('Succès', response.msg || 'Départ créé avec succès');
+      console.log('✅ [DEPARTURE FORM] Départ créé en local:', departure);
+      showSuccess('Succès', 'Départ créé avec succès (sera synchronisé automatiquement)');
       onSuccess();
       onClose();
 
@@ -117,7 +138,7 @@ const DepartureFormModal: React.FC<DepartureFormModalProps> = ({ isOpen, onClose
         departureTime: '',
       });
     } catch (error: any) {
-      console.error('Erreur lors de la création du départ:', error);
+      console.error('❌ [DEPARTURE FORM] Erreur lors de la création du départ:', error);
       showError('Erreur', error.message || 'Impossible de créer le départ');
     } finally {
       setIsSubmitting(false);
