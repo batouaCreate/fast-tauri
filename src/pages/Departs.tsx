@@ -6,7 +6,7 @@ import BordereauBilletModal from '../components/BordereauBilletModal';
 import BordereauColisModal from '../components/BordereauColisModal';
 import BordereauBagageModal from '../components/BordereauBagageModal';
 import { Departure } from '../services/api';
-import { offlineDepartureApi, offlineAgenceApi, OfflineDeparture } from '../services/offline-api';
+import { offlineDepartureApi, offlineAgenceApi, offlineTicketApi, OfflineDeparture } from '../services/offline-api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
@@ -40,56 +40,71 @@ const Departs: React.FC = () => {
       const offlineDeparts = await offlineDepartureApi.getAll(parseInt(user.id));
       console.log(`✅ [DEPARTS] ${offlineDeparts.length} départ(s) chargé(s) depuis la BD locale`);
 
-      // Convertir les départs offline en format Departure pour compatibilité
-      const departsData: Departure[] = offlineDeparts.map((dep: OfflineDeparture) => ({
-        dep_id: dep.id || 0,
-        dep_ligne: dep.dep_ligne || '',
-        dep_user: dep.dep_user,
-        dep_numcar: dep.dep_numcar,
-        dep_nom: dep.dep_nom,
-        dep_dest: String(dep.dep_dest),
-        dep_place: dep.dep_place,
-        dep_chauff: dep.dep_chauff,
-        dep_conv: dep.dep_conv,
-        dep_date: dep.dep_date,
-        dep_heure: dep.dep_heure,
-        dep_fraisroute: dep.dep_fraisroute,
-        dep_lavage: dep.dep_lavage,
-        dep_carbur: dep.dep_carbur,
-        dep_droitgare: dep.dep_droitgare,
-        dep_autredep: dep.dep_autredep,
-        dep_create: dep.created_at,
-        ag_id: dep.ag_id,
-        ag_etp: 0,
-        ag_code: '',
-        ag_nom: user.agence.name,
-        ag_phone: '',
-        ag_pays: '',
-        ag_ville: '',
-        ag_devise: user.agence.currency,
-        ag_prefix: '',
-        ag_stat: '',
-        ag_create: '',
-        us_id: dep.dep_user,
-        us_agence: dep.ag_id,
-        us_type: '',
-        us_code: '',
-        us_nom: user.name,
-        us_email: '',
-        us_phone: '',
-        us_pass: '',
-        us_stat: '',
-        us_photo: '',
-        us_device: '',
-        us_printer: 0,
-        us_create: '',
-        dateDep: dep.dep_date,
-        sumtick: null,
-        agdest: agencesMap.get(Number(dep.dep_dest)) || `Destination ${dep.dep_dest}`,
-        nbtick: 0, // Nombre de tickets vendus (à implémenter si nécessaire)
-      }));
+      // Charger le nombre de tickets pour chaque départ
+      const departsWithTickets = await Promise.all(
+        offlineDeparts.map(async (dep: OfflineDeparture) => {
+          let nbTickets = 0;
+          try {
+            // Charger les tickets pour ce départ
+            const tickets = await offlineTicketApi.getByDeparture(dep.id || 0);
+            nbTickets = tickets.length;
+            console.log(`📊 [DEPARTS] Départ ${dep.dep_nom}: ${nbTickets} ticket(s) vendu(s)`);
+          } catch (error) {
+            console.warn(`⚠️ [DEPARTS] Impossible de charger les tickets pour le départ ${dep.id}:`, error);
+          }
 
-      setDeparts(departsData);
+          return {
+            dep_id: dep.id || 0,
+            dep_ligne: dep.dep_ligne || '',
+            dep_user: dep.dep_user,
+            dep_numcar: dep.dep_numcar,
+            dep_nom: dep.dep_nom,
+            dep_dest: String(dep.dep_dest),
+            dep_place: dep.dep_place,
+            dep_chauff: dep.dep_chauff,
+            dep_conv: dep.dep_conv,
+            dep_date: dep.dep_date,
+            dep_heure: dep.dep_heure,
+            dep_fraisroute: dep.dep_fraisroute,
+            dep_lavage: dep.dep_lavage,
+            dep_carbur: dep.dep_carbur,
+            dep_droitgare: dep.dep_droitgare,
+            dep_autredep: dep.dep_autredep,
+            dep_create: dep.created_at,
+            ag_id: dep.ag_id,
+            ag_etp: 0,
+            ag_code: '',
+            ag_nom: user.agence.name,
+            ag_phone: '',
+            ag_pays: '',
+            ag_ville: '',
+            ag_devise: user.agence.currency,
+            ag_prefix: '',
+            ag_stat: '',
+            ag_create: '',
+            us_id: dep.dep_user,
+            us_agence: dep.ag_id,
+            us_type: '',
+            us_code: '',
+            us_nom: user.name,
+            us_email: '',
+            us_phone: '',
+            us_pass: '',
+            us_stat: '',
+            us_photo: '',
+            us_device: '',
+            us_printer: 0,
+            us_create: '',
+            dateDep: dep.dep_date,
+            sumtick: null,
+            agdest: agencesMap.get(Number(dep.dep_dest)) || `Destination ${dep.dep_dest}`,
+            nbtick: nbTickets, // Nombre réel de tickets vendus depuis la BD locale
+          } as Departure;
+        })
+      );
+
+      setDeparts(departsWithTickets);
+      console.log(`✅ [DEPARTS] Données complètes chargées avec le nombre de tickets`);
     } catch (error) {
       console.error('❌ [DEPARTS] Erreur lors du chargement des départs:', error);
       showError('Erreur', 'Impossible de charger les départs');

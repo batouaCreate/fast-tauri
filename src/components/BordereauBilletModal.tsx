@@ -1,14 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { X, Printer, Loader2 } from 'lucide-react';
-import { bordereauApi, BordereauBilletData } from '../services/api';
 import { ThermalPrinter } from '../services/printer';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { offlineDepartureApi, offlineTicketApi, offlineDestinationApi } from '../services/offline-api';
+import type { OfflineDeparture, OfflineTicket } from '../services/offline-api';
 
 interface BordereauBilletModalProps {
   isOpen: boolean;
   onClose: () => void;
   departId: number;
+}
+
+interface TicketsByDestination {
+  dest_id: number;
+  dest_ville: string;
+  nombre_tickets: number;
+  montant_total: number;
 }
 
 const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
@@ -18,7 +26,10 @@ const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
 }) => {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const [bordereauData, setBordereauData] = useState<BordereauBilletData | null>(null);
+  const [departure, setDeparture] = useState<OfflineDeparture | null>(null);
+  const [tickets, setTickets] = useState<OfflineTicket[]>([]);
+  const [ticketsByDestination, setTicketsByDestination] = useState<TicketsByDestination[]>([]);
+  const [totalAmount, setTotalAmount] = useState<number>(0);
   const [printers, setPrinters] = useState<string[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
@@ -36,15 +47,76 @@ const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
 
     try {
       setIsLoading(true);
+      console.log('📊 [BORDEREAU] Chargement du départ et des tickets depuis la BD locale...');
+
+      // Charger le départ
+      const departureData = await offlineDepartureApi.getById(departId);
+      setDeparture(departureData);
+      console.log('✅ [BORDEREAU] Départ chargé:', departureData);
+
+      // Charger les tickets pour ce départ
+      const ticketsData = await offlineTicketApi.getByDeparture(departId);
+      setTickets(ticketsData);
+      console.log('✅ [BORDEREAU] Tickets chargés:', ticketsData.length);
+
+      // Charger les destinations
       const agenceId = parseInt(localStorage.getItem('agenceId') || user.agence.id.toString());
-      const response = await bordereauApi.getBordBillet(
-        parseInt(user.id),
-        agenceId,
-        departId
+      const destinationsData = await offlineDestinationApi.getByAgence(agenceId);
+      console.log('✅ [BORDEREAU] Destinations chargées:', destinationsData.length);
+
+      // Créer un map des destinations pour un accès rapide
+      const destMap = new Map<number, string>();
+      destinationsData.forEach(dest => {
+        if (dest.remote_id) {
+          destMap.set(dest.remote_id, dest.dest_ville);
+        }
+      });
+
+      // Regrouper les tickets par destination
+      const groupedTickets = new Map<number, { nombre: number; montant: number; ville: string }>();
+      let total = 0;
+
+      ticketsData.forEach(ticket => {
+        const destId = ticket.tick_dest;
+        const destVille = destMap.get(destId) || `Destination ${destId}`;
+        const prix = parseFloat(ticket.tick_price);
+        const reduction = ticket.tick_reduc || 0;
+        const montantFinal = prix - reduction;
+
+        if (groupedTickets.has(destId)) {
+          const existing = groupedTickets.get(destId)!;
+          groupedTickets.set(destId, {
+            nombre: existing.nombre + 1,
+            montant: existing.montant + montantFinal,
+            ville: destVille,
+          });
+        } else {
+          groupedTickets.set(destId, {
+            nombre: 1,
+            montant: montantFinal,
+            ville: destVille,
+          });
+        }
+
+        total += montantFinal;
+      });
+
+      // Convertir en tableau pour l'affichage
+      const ticketsByDest: TicketsByDestination[] = Array.from(groupedTickets.entries()).map(
+        ([dest_id, data]) => ({
+          dest_id,
+          dest_ville: data.ville,
+          nombre_tickets: data.nombre,
+          montant_total: data.montant,
+        })
       );
-      setBordereauData(response.data);
+
+      setTicketsByDestination(ticketsByDest);
+      setTotalAmount(total);
+      console.log('✅ [BORDEREAU] Tickets groupés par destination:', ticketsByDest);
+      console.log('✅ [BORDEREAU] Montant total:', total);
     } catch (error: any) {
-      console.error('Erreur lors du chargement du bordereau:', error);
+      console.error('❌ [BORDEREAU] Erreur lors du chargement du bordereau:', error);
       showToast('error', 'Erreur', error.message || 'Impossible de charger le bordereau');
     } finally {
       setIsLoading(false);
@@ -65,7 +137,7 @@ const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
   };
 
   const handlePrint = async () => {
-    if (!bordereauData || !selectedPrinter) {
+    if (!departure || !selectedPrinter) {
       showToast('error', 'Erreur', 'Veuillez sélectionner une imprimante');
       return;
     }
@@ -73,47 +145,35 @@ const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
     try {
       setIsPrinting(true);
 
-      const depart = bordereauData.depart[0];
+      // Préparer les données pour l'impression avec le regroupement par destination
+      const destinationItems = ticketsByDestination.map(dest => ({
+        label: `${dest.dest_ville} (${dest.nombre_tickets} ticket${dest.nombre_tickets > 1 ? 's' : ''})`,
+        value: dest.montant_total === 0 ? 'GRATUIT' : `${dest.montant_total.toFixed(0)} FCFA`,
+      }));
 
-      // Télécharger le logo si disponible
-      let logoBase64: string | undefined;
-      if (depart.etp_img) {
-        try {
-          logoBase64 = await ThermalPrinter.urlToBase64(depart.etp_img);
-        } catch (error) {
-          console.warn('Impossible de charger le logo:', error);
-        }
-      }
-
-      // Préparer les données pour l'impression
-      const ticketItems = bordereauData.tickets.map(ticket => {
-        const prixFinal = parseFloat(ticket.tick_price) - (ticket.tick_reduc || 0);
-        return {
-          label: `${ticket.dest_ville} - Siège ${ticket.tick_siege}`,
-          value: prixFinal === 0 ? 'GRATUIT' : `${prixFinal} FCFA`,
-        };
-      });
+      // Récupérer l'agence de départ (à partir de departure.ag_id si disponible)
+      const agenceDepart = user?.agence.name || 'Agence';
 
       const ticketData = {
         title: 'BORDEREAU BILLET',
         items: [
-          { label: 'Départ', value: `${depart.ag_nom} => ${depart.agdest}` },
-          { label: 'Nom départ', value: depart.dep_nom },
-          { label: 'Date et heure', value: `${depart.dep_date} ${depart.dep_heure}` },
-          { label: 'Sièges vendus', value: `${bordereauData.cptick}/${depart.dep_place}` },
+          { label: 'Départ', value: agenceDepart },
+          { label: 'Nom départ', value: departure.dep_nom },
+          { label: 'Date et heure', value: `${departure.dep_date} ${departure.dep_heure}` },
+          { label: 'Sièges vendus', value: `${tickets.length}/${departure.dep_place}` },
           { label: '', value: '' },
-          { label: '--- BILLETS ---', value: '' },
-          ...ticketItems,
+          { label: '--- BILLETS PAR DESTINATION ---', value: '' },
+          ...destinationItems,
         ],
-        total: `TOTAL: ${bordereauData.stattick.tot_ticket} FCFA`,
+        total: `TOTAL: ${totalAmount.toFixed(0)} FCFA`,
         footer: [
-          `Chauffeur: ${depart.dep_chauff}`,
-          `Car: ${depart.dep_numcar}`,
+          `Chauffeur: ${departure.dep_chauff || 'N/A'}`,
+          `Car: ${departure.dep_numcar || 'N/A'}`,
           new Date().toLocaleString('fr-FR'),
         ],
       };
 
-      await ThermalPrinter.printTicket(selectedPrinter, ticketData, logoBase64, 200);
+      await ThermalPrinter.printTicket(selectedPrinter, ticketData, undefined, 200);
 
       showToast('success', 'Succès', 'Bordereau imprimé avec succès');
       onClose();
@@ -149,7 +209,7 @@ const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
             <div className="flex items-center justify-center py-12">
               <Loader2 className="animate-spin text-primary-500" size={40} />
             </div>
-          ) : bordereauData ? (
+          ) : departure ? (
             <div className="space-y-6">
               {/* Sélection de l'imprimante */}
               <div className="card">
@@ -177,36 +237,48 @@ const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Départ et Destination</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Agence de départ</p>
                     <p className="font-medium text-gray-900 dark:text-white">
-                      {bordereauData.depart[0]?.ag_nom} → {bordereauData.depart[0]?.agdest}
+                      {user?.agence.name}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Nom du départ</p>
                     <p className="font-medium text-gray-900 dark:text-white">
-                      {bordereauData.depart[0]?.dep_nom}
+                      {departure.dep_nom}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Date et heure</p>
                     <p className="font-medium text-gray-900 dark:text-white">
-                      {bordereauData.depart[0]?.dep_date} à {bordereauData.depart[0]?.dep_heure}
+                      {departure.dep_date} à {departure.dep_heure}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Sièges vendus</p>
                     <p className="font-medium text-gray-900 dark:text-white">
-                      {bordereauData.cptick} / {bordereauData.depart[0]?.dep_place}
+                      {tickets.length} / {departure.dep_place}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Chauffeur</p>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {departure.dep_chauff || 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Numéro de car</p>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {departure.dep_numcar || 'N/A'}
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Liste des tickets */}
+              {/* Tickets par destination */}
               <div className="card">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                  Liste des billets ({bordereauData.tickets.length})
+                  Billets par destination ({tickets.length} billet{tickets.length > 1 ? 's' : ''})
                 </h3>
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -215,35 +287,49 @@ const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
                         <th className="text-left py-2 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
                           Destination
                         </th>
-                        <th className="text-left py-2 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                          Siège
+                        <th className="text-center py-2 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                          Nombre de tickets
                         </th>
-                        <th className="text-left py-2 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                          Prix
+                        <th className="text-right py-2 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                          Montant total
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {bordereauData.tickets.map((ticket, index) => (
+                      {ticketsByDestination.map((dest) => (
                         <tr
-                          key={index}
+                          key={dest.dest_id}
                           className="border-b border-gray-100 dark:border-gray-800"
                         >
-                          <td className="py-2 px-4 text-gray-900 dark:text-white">
-                            {ticket.dest_ville}
+                          <td className="py-3 px-4 text-gray-900 dark:text-white">
+                            {dest.dest_ville}
                           </td>
-                          <td className="py-2 px-4 text-gray-900 dark:text-white">
-                            {ticket.tick_siege}
+                          <td className="py-3 px-4 text-center text-gray-900 dark:text-white font-medium">
+                            {dest.nombre_tickets}
                           </td>
-                          <td className="py-2 px-4 text-gray-900 dark:text-white">
-                            {(() => {
-                              const prixFinal = parseFloat(ticket.tick_price) - (ticket.tick_reduc || 0);
-                              return prixFinal === 0 ? 'GRATUIT' : `${prixFinal} FCFA`;
-                            })()}
+                          <td className="py-3 px-4 text-right text-gray-900 dark:text-white font-medium">
+                            {dest.montant_total === 0 ? (
+                              <span className="text-green-600 dark:text-green-400">GRATUIT</span>
+                            ) : (
+                              `${dest.montant_total.toFixed(0)} FCFA`
+                            )}
                           </td>
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot className="border-t-2 border-gray-300 dark:border-gray-700">
+                      <tr>
+                        <td className="py-3 px-4 text-gray-900 dark:text-white font-bold">
+                          TOTAL
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-900 dark:text-white font-bold">
+                          {tickets.length}
+                        </td>
+                        <td className="py-3 px-4 text-right text-primary-600 dark:text-primary-400 font-bold text-lg">
+                          {totalAmount.toFixed(0)} FCFA
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               </div>
@@ -268,7 +354,7 @@ const BordereauBilletModal: React.FC<BordereauBilletModalProps> = ({
           </button>
           <button
             onClick={handlePrint}
-            disabled={isPrinting || !selectedPrinter || !bordereauData}
+            disabled={isPrinting || !selectedPrinter || !departure}
             className="btn-primary flex items-center gap-2"
           >
             {isPrinting ? (

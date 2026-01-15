@@ -51,14 +51,16 @@ impl SyncManager {
         }
 
         // Extraire l'ID du départ depuis la réponse de l'API
-        // L'API peut retourner l'ID dans result["data"]["dep_id"] ou result["dep_id"]
-        let remote_id = result["data"]["dep_id"]
+        // L'API retourne l'ID dans result["data"]["id"]
+        let remote_id = result["data"]["id"]
             .as_i64()
+            .or_else(|| result["data"]["dep_id"].as_i64())
             .or_else(|| result["dep_id"].as_i64())
             .unwrap_or_else(|| {
                 // Si l'API ne retourne pas d'ID, on utilise un timestamp comme fallback
                 // Ce n'est pas idéal mais permet au moins de marquer comme synchronisé
                 println!("⚠️ [SYNC] L'API n'a pas retourné d'ID pour le départ, utilisation d'un ID temporaire");
+                println!("⚠️ [SYNC] Réponse de l'API: {:?}", result);
                 chrono::Utc::now().timestamp()
             });
 

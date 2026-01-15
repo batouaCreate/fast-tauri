@@ -96,9 +96,19 @@ Le système de synchronisation fonctionne en arrière-plan et synchronise les do
 ```json
 {
   "status": 200,
-  "msg": "Départ créé avec succès",
+  "msg": "Départ enregistré",
   "data": {
-    "dep_id": 789      // ID DISTANT du départ créé
+    "dep_user": 12,
+    "dep_nom": "Depart 3",
+    "dep_numcar": "BUS001002",
+    "dep_place": 64,
+    "dep_dest": 27,
+    "dep_chauff": "Ernest",
+    "dep_conv": "Siaka",
+    "dep_date": "2026-01-15",
+    "dep_heure": "12:00",
+    "dep_create": "2026-01-14 17:43:40",
+    "id": 789          // ID DISTANT du départ créé
   }
 }
 ```
