@@ -651,42 +651,93 @@ pub fn sync_departures_from_api(conn: &Connection, departures_data: Vec<serde_js
     for dep in departures_data {
         let remote_id = dep["dep_id"].as_i64().unwrap_or(0);
 
-        // Utiliser INSERT OR REPLACE pour éviter les doublons
-        // Note: On marque les départs provenant de l'API comme 'synced' car ils existent déjà sur le serveur
-        conn.execute(
-            "INSERT OR REPLACE INTO departures (
-                remote_id, dep_ligne, dep_user, dep_numcar, dep_nom, dep_dest,
-                dep_place, dep_chauff, dep_conv, dep_date, dep_heure,
-                dep_fraisroute, dep_lavage, dep_carbur, dep_droitgare, dep_autredep,
-                ag_id, sync_status,
-                created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
-                COALESCE((SELECT created_at FROM departures WHERE remote_id = ?1), ?19),
-                ?20
-            )",
-            params![
-                remote_id,
-                dep["dep_ligne"].as_str(),
-                dep["dep_user"].as_i64().unwrap_or(0),
-                dep["dep_numcar"].as_str().unwrap_or(""),
-                dep["dep_nom"].as_str().unwrap_or(""),
-                dep["dep_dest"].as_str().unwrap_or(""),
-                dep["dep_place"].as_i64().unwrap_or(0),
-                dep["dep_chauff"].as_str().unwrap_or(""),
-                dep["dep_conv"].as_str().unwrap_or(""),
-                dep["dep_date"].as_str().unwrap_or(""),
-                dep["dep_heure"].as_str().unwrap_or(""),
-                dep["dep_fraisroute"].as_i64().unwrap_or(0),
-                dep["dep_lavage"].as_i64().unwrap_or(0),
-                dep["dep_carbur"].as_i64().unwrap_or(0),
-                dep["dep_droitgare"].as_i64().unwrap_or(0),
-                dep["dep_autredep"].as_i64().unwrap_or(0),
-                dep["ag_id"].as_i64().unwrap_or(0),
-                "synced",  // Les départs provenant de l'API sont déjà synchronisés
-                now,
-                now,
-            ],
-        )?;
+        // Vérifier si un départ avec ce remote_id existe déjà
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM departures WHERE remote_id = ?1)",
+            params![remote_id],
+            |row| row.get(0),
+        ).unwrap_or(false);
+
+        if exists {
+            // Mettre à jour le départ existant
+            println!("🔄 [SYNC] Mise à jour du départ existant avec remote_id: {}", remote_id);
+            conn.execute(
+                "UPDATE departures SET
+                    dep_ligne = ?1,
+                    dep_user = ?2,
+                    dep_numcar = ?3,
+                    dep_nom = ?4,
+                    dep_dest = ?5,
+                    dep_place = ?6,
+                    dep_chauff = ?7,
+                    dep_conv = ?8,
+                    dep_date = ?9,
+                    dep_heure = ?10,
+                    dep_fraisroute = ?11,
+                    dep_lavage = ?12,
+                    dep_carbur = ?13,
+                    dep_droitgare = ?14,
+                    dep_autredep = ?15,
+                    ag_id = ?16,
+                    sync_status = ?17,
+                    updated_at = ?18
+                WHERE remote_id = ?19",
+                params![
+                    dep["dep_ligne"].as_str(),
+                    dep["dep_user"].as_i64().unwrap_or(0),
+                    dep["dep_numcar"].as_str().unwrap_or(""),
+                    dep["dep_nom"].as_str().unwrap_or(""),
+                    dep["dep_dest"].as_str().unwrap_or(""),
+                    dep["dep_place"].as_i64().unwrap_or(0),
+                    dep["dep_chauff"].as_str().unwrap_or(""),
+                    dep["dep_conv"].as_str().unwrap_or(""),
+                    dep["dep_date"].as_str().unwrap_or(""),
+                    dep["dep_heure"].as_str().unwrap_or(""),
+                    dep["dep_fraisroute"].as_i64().unwrap_or(0),
+                    dep["dep_lavage"].as_i64().unwrap_or(0),
+                    dep["dep_carbur"].as_i64().unwrap_or(0),
+                    dep["dep_droitgare"].as_i64().unwrap_or(0),
+                    dep["dep_autredep"].as_i64().unwrap_or(0),
+                    dep["ag_id"].as_i64().unwrap_or(0),
+                    "synced",  // Les départs provenant de l'API sont déjà synchronisés
+                    now,
+                    remote_id,
+                ],
+            )?;
+        } else {
+            // Insérer un nouveau départ
+            println!("➕ [SYNC] Insertion d'un nouveau départ avec remote_id: {}", remote_id);
+            conn.execute(
+                "INSERT INTO departures (
+                    remote_id, dep_ligne, dep_user, dep_numcar, dep_nom, dep_dest,
+                    dep_place, dep_chauff, dep_conv, dep_date, dep_heure,
+                    dep_fraisroute, dep_lavage, dep_carbur, dep_droitgare, dep_autredep,
+                    ag_id, sync_status, created_at, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                params![
+                    remote_id,
+                    dep["dep_ligne"].as_str(),
+                    dep["dep_user"].as_i64().unwrap_or(0),
+                    dep["dep_numcar"].as_str().unwrap_or(""),
+                    dep["dep_nom"].as_str().unwrap_or(""),
+                    dep["dep_dest"].as_str().unwrap_or(""),
+                    dep["dep_place"].as_i64().unwrap_or(0),
+                    dep["dep_chauff"].as_str().unwrap_or(""),
+                    dep["dep_conv"].as_str().unwrap_or(""),
+                    dep["dep_date"].as_str().unwrap_or(""),
+                    dep["dep_heure"].as_str().unwrap_or(""),
+                    dep["dep_fraisroute"].as_i64().unwrap_or(0),
+                    dep["dep_lavage"].as_i64().unwrap_or(0),
+                    dep["dep_carbur"].as_i64().unwrap_or(0),
+                    dep["dep_droitgare"].as_i64().unwrap_or(0),
+                    dep["dep_autredep"].as_i64().unwrap_or(0),
+                    dep["ag_id"].as_i64().unwrap_or(0),
+                    "synced",  // Les départs provenant de l'API sont déjà synchronisés
+                    now,
+                    now,
+                ],
+            )?;
+        }
         count += 1;
     }
 

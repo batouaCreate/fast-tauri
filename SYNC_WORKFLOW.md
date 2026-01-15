@@ -195,6 +195,35 @@ let api_base_url = "https://guichet.createsarl.com/api".to_string();
 4. ✅ Les tickets en attente seront automatiquement synchronisés une fois le départ synchronisé
 5. ✅ Tout fonctionne en arrière-plan sans intervention de l'utilisateur
 6. ✅ Les erreurs sont enregistrées et le worker réessaie automatiquement
+7. ✅ Pas de doublons lors de la synchronisation depuis l'API grâce à la logique check-then-update
+
+## Prévention des doublons
+
+Lors de la connexion, les départs sont chargés depuis l'API et synchronisés en local. Pour éviter les doublons, le système utilise une logique **check-then-update** :
+
+### Fonctionnement (`sync_departures_from_api`)
+
+1. Pour chaque départ reçu de l'API, le système vérifie si un départ avec le même `remote_id` existe déjà
+2. **Si le départ existe** : mise à jour des données existantes (UPDATE)
+   ```
+   🔄 [SYNC] Mise à jour du départ existant avec remote_id: 12345
+   ```
+3. **Si le départ n'existe pas** : insertion d'un nouveau départ (INSERT)
+   ```
+   ➕ [SYNC] Insertion d'un nouveau départ avec remote_id: 12345
+   ```
+
+### Pourquoi cette approche ?
+
+- Les tables `agences` et `destinations` ont une contrainte UNIQUE sur `remote_id`, permettant l'utilisation de `INSERT OR REPLACE`
+- La table `departures` n'a pas cette contrainte pour permettre plus de flexibilité
+- La logique explicite check-then-update garantit l'absence de doublons sans nécessiter de migration de schéma
+
+### Comportement lors des synchronisations multiples
+
+- **Première connexion** : Tous les départs sont insérés
+- **Connexions suivantes** : Les départs existants sont mis à jour, seuls les nouveaux sont insérés
+- **Départs créés localement** : Conservent leur ID local unique et sont synchronisés normalement vers l'API
 
 ## Diagnostic
 
