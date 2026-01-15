@@ -71,6 +71,34 @@ pub fn sync_departures(
 // ============== TICKETS ==============
 
 #[tauri::command]
+pub fn sync_tickets(
+    state: State<AppState>,
+    tickets_json: String,
+) -> Result<usize, String> {
+    println!("🔄 [RUST] sync_tickets appelé");
+    println!("📊 [RUST] JSON reçu (taille): {} bytes", tickets_json.len());
+
+    let db = state.db.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    let tickets_data: Vec<serde_json::Value> = serde_json::from_str(&tickets_json)
+        .map_err(|e| {
+            println!("❌ [RUST] Erreur parsing JSON: {}", e);
+            format!("JSON parse error: {}", e)
+        })?;
+
+    println!("📦 [RUST] Nombre de tickets à synchroniser: {}", tickets_data.len());
+
+    let result = sync_tickets_from_api(&db.conn, tickets_data)
+        .map_err(|e| {
+            println!("❌ [RUST] Erreur DB: {}", e);
+            format!("DB error: {}", e)
+        })?;
+
+    println!("✅ [RUST] {} tickets synchronisés avec succès (sans doublons)", result);
+    Ok(result)
+}
+
+#[tauri::command]
 pub fn sell_ticket_offline(
     state: State<AppState>,
     request: SellTicketRequest,

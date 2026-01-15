@@ -743,3 +743,91 @@ pub fn sync_departures_from_api(conn: &Connection, departures_data: Vec<serde_js
 
     Ok(count)
 }
+
+// Synchroniser les tickets depuis l'API
+pub fn sync_tickets_from_api(conn: &Connection, tickets_data: Vec<serde_json::Value>) -> Result<usize> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut count = 0;
+
+    for ticket in tickets_data {
+        let remote_id = ticket["tick_id"].as_i64().unwrap_or(0);
+
+        // Vérifier si un ticket avec ce remote_id existe déjà
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM tickets WHERE remote_id = ?1)",
+            params![remote_id],
+            |row| row.get(0),
+        ).unwrap_or(false);
+
+        if exists {
+            // Mettre à jour le ticket existant
+            println!("🔄 [SYNC] Mise à jour du ticket existant avec remote_id: {}", remote_id);
+            conn.execute(
+                "UPDATE tickets SET
+                    tick_vtick = ?1,
+                    tick_user = ?2,
+                    tick_depart = ?3,
+                    tick_price = ?4,
+                    tick_reduc = ?5,
+                    tick_dest = ?6,
+                    tick_nom = ?7,
+                    tick_phone = ?8,
+                    tick_siege = ?9,
+                    tick_nature = ?10,
+                    tick_method = ?11,
+                    tick_type = ?12,
+                    sync_status = ?13,
+                    updated_at = ?14
+                WHERE remote_id = ?15",
+                params![
+                    ticket["tick_vtick"].as_i64(),
+                    ticket["tick_user"].as_i64().unwrap_or(0),
+                    ticket["tick_depart"].as_i64().unwrap_or(0),
+                    ticket["tick_price"].as_str().unwrap_or("0"),
+                    ticket["tick_reduc"].as_i64().unwrap_or(0),
+                    ticket["tick_dest"].as_i64().unwrap_or(0),
+                    ticket["tick_nom"].as_str().unwrap_or(""),
+                    ticket["tick_phone"].as_str(),
+                    ticket["tick_siege"].as_str().unwrap_or("0"),
+                    ticket["tick_nature"].as_str().unwrap_or(""),
+                    ticket["tick_method"].as_str().unwrap_or(""),
+                    ticket["tick_type"].as_str(),
+                    "synced",  // Les tickets provenant de l'API sont déjà synchronisés
+                    now,
+                    remote_id,
+                ],
+            )?;
+        } else {
+            // Insérer un nouveau ticket
+            println!("➕ [SYNC] Insertion d'un nouveau ticket avec remote_id: {}", remote_id);
+            conn.execute(
+                "INSERT INTO tickets (
+                    remote_id, tick_vtick, tick_user, tick_depart, tick_price,
+                    tick_reduc, tick_dest, tick_nom, tick_phone, tick_siege,
+                    tick_nature, tick_method, tick_type, sync_status, created_at, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                params![
+                    remote_id,
+                    ticket["tick_vtick"].as_i64(),
+                    ticket["tick_user"].as_i64().unwrap_or(0),
+                    ticket["tick_depart"].as_i64().unwrap_or(0),
+                    ticket["tick_price"].as_str().unwrap_or("0"),
+                    ticket["tick_reduc"].as_i64().unwrap_or(0),
+                    ticket["tick_dest"].as_i64().unwrap_or(0),
+                    ticket["tick_nom"].as_str().unwrap_or(""),
+                    ticket["tick_phone"].as_str(),
+                    ticket["tick_siege"].as_str().unwrap_or("0"),
+                    ticket["tick_nature"].as_str().unwrap_or(""),
+                    ticket["tick_method"].as_str().unwrap_or(""),
+                    ticket["tick_type"].as_str(),
+                    "synced",  // Les tickets provenant de l'API sont déjà synchronisés
+                    now,
+                    now,
+                ],
+            )?;
+        }
+        count += 1;
+    }
+
+    Ok(count)
+}

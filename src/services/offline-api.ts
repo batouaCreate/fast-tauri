@@ -207,6 +207,20 @@ export const offlineDepartureApi = {
 
 // API pour les tickets
 export const offlineTicketApi = {
+  async syncFromOnline(ticketsData: any[]): Promise<number> {
+    try {
+      console.log('🔌 Synchronisation tickets vers la BD locale:', ticketsData.length);
+      const count = await invoke<number>('sync_tickets', {
+        ticketsJson: JSON.stringify(ticketsData),
+      });
+      console.log('✅ Tickets synchronisés (sans doublons):', count);
+      return count;
+    } catch (error) {
+      console.error('❌ Erreur sync tickets:', error);
+      throw error;
+    }
+  },
+
   async sell(request: {
     user: number;
     depart: number;

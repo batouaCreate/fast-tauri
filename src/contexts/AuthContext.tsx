@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authApi, ApiError, gareApi, destinationApi, departureApi } from '../services/api';
-import { offlineAgenceApi, offlineDestinationApi, offlineDepartureApi } from '../services/offline-api';
+import { authApi, ApiError, gareApi, destinationApi, departureApi, ticketApi } from '../services/api';
+import { offlineAgenceApi, offlineDestinationApi, offlineDepartureApi, offlineTicketApi } from '../services/offline-api';
 
 interface User {
   id: string;
@@ -141,6 +141,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error) {
       console.error('❌ [AUTH] Erreur sync départs:', error);
+      // Ne pas bloquer la connexion si la sync échoue
+    }
+
+    // Synchroniser les tickets vendus
+    try {
+      console.log('📡 [AUTH] Chargement des tickets vendus...');
+      const ticketsResponse = await ticketApi.ticketByUser(userId, '', '');
+
+      if (ticketsResponse.status === 200 && ticketsResponse.data) {
+        console.log(`📦 [AUTH] ${ticketsResponse.data.length} ticket(s) reçu(s) de l'API`);
+        const count = await offlineTicketApi.syncFromOnline(ticketsResponse.data);
+        console.log(`✅ [AUTH] ${count} tickets synchronisés en local (sans doublons)`);
+      } else {
+        console.warn('⚠️ [AUTH] Pas de tickets reçus:', ticketsResponse.msg);
+      }
+    } catch (error) {
+      console.error('❌ [AUTH] Erreur sync tickets:', error);
       // Ne pas bloquer la connexion si la sync échoue
     }
 
