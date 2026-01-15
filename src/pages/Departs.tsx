@@ -40,15 +40,24 @@ const Departs: React.FC = () => {
       const offlineDeparts = await offlineDepartureApi.getAll(parseInt(user.id));
       console.log(`✅ [DEPARTS] ${offlineDeparts.length} départ(s) chargé(s) depuis la BD locale`);
 
-      // Charger le nombre de tickets pour chaque départ
+      // Charger le nombre de tickets et le montant total pour chaque départ
       const departsWithTickets = await Promise.all(
         offlineDeparts.map(async (dep: OfflineDeparture) => {
           let nbTickets = 0;
+          let sumTickets = 0;
           try {
             // Charger les tickets pour ce départ
             const tickets = await offlineTicketApi.getByDeparture(dep.id || 0);
             nbTickets = tickets.length;
-            console.log(`📊 [DEPARTS] Départ ${dep.dep_nom}: ${nbTickets} ticket(s) vendu(s)`);
+
+            // Calculer la somme totale (tick_price - tick_reduc)
+            sumTickets = tickets.reduce((sum, ticket) => {
+              const price = parseFloat(ticket.tick_price) || 0;
+              const reduc = ticket.tick_reduc || 0;
+              return sum + (price - reduc);
+            }, 0);
+
+            console.log(`📊 [DEPARTS] Départ ${dep.dep_nom}: ${nbTickets} ticket(s) vendu(s), Total: ${sumTickets} FCFA`);
           } catch (error) {
             console.warn(`⚠️ [DEPARTS] Impossible de charger les tickets pour le départ ${dep.id}:`, error);
           }
@@ -96,7 +105,7 @@ const Departs: React.FC = () => {
             us_printer: 0,
             us_create: '',
             dateDep: dep.dep_date,
-            sumtick: null,
+            sumtick: sumTickets, // Somme totale des tickets vendus
             agdest: agencesMap.get(Number(dep.dep_dest)) || `Destination ${dep.dep_dest}`,
             nbtick: nbTickets, // Nombre réel de tickets vendus depuis la BD locale
           } as Departure;
@@ -226,6 +235,15 @@ const Departs: React.FC = () => {
                   <span className="text-sm text-gray-600 dark:text-gray-400">Chauffeur</span>
                   <span className="text-sm font-medium text-gray-900 dark:text-white">{depart.dep_chauff}</span>
                 </div>
+
+                {depart.sumtick !== null && depart.sumtick > 0 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Total tickets</span>
+                    <span className="text-sm font-bold text-green-600 dark:text-green-400">
+                      {depart.sumtick.toLocaleString('fr-FR')} FCFA
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 space-y-3">
@@ -268,6 +286,7 @@ const Departs: React.FC = () => {
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           departure={selectedDeparture}
+          onSuccess={loadDeparts}
         />
       )}
 

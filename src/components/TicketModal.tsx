@@ -14,13 +14,14 @@ interface Seat {
   price: number;
 }
 
-interface TicketModalProps { 
+interface TicketModalProps {
   isOpen: boolean;
   onClose: () => void;
   departure: Departure;
+  onSuccess?: () => void;
 }
 
-const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure }) => {
+const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, onSuccess }) => {
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
   const [isLoadingSeats, setIsLoadingSeats] = useState(true);
@@ -311,6 +312,11 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
 
       // Recharger les sièges pour afficher la mise à jour
       await reloadSeats();
+
+      // Notifier la page parente pour actualiser les données
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (error: any) {
       console.error('Erreur lors de la vente du ticket:', error);
       showError('Erreur', error.message || 'Impossible de vendre le ticket');
@@ -386,6 +392,11 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure })
 
       // Recharger les sièges pour afficher la mise à jour
       await reloadSeats();
+
+      // Notifier la page parente pour actualiser les données
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (error: any) {
       console.error('Erreur lors de la création du ticket gratuit:', error);
       showError('Erreur', error.message || 'Impossible de créer le ticket gratuit');

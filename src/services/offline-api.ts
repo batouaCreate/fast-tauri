@@ -139,6 +139,11 @@ export interface SyncStatus {
   error_tickets: number;
 }
 
+export interface TicketStats {
+  count: number;
+  total: number;
+}
+
 // API pour les départs
 export const offlineDepartureApi = {
   async syncFromOnline(departuresData: any[]): Promise<number> {
@@ -274,6 +279,22 @@ export const offlineTicketApi = {
       return ticket;
     } catch (error) {
       console.error('❌ Erreur chargement ticket offline:', error);
+      throw error;
+    }
+  },
+
+  async getStatistics(userId: number, startDate: string, endDate: string): Promise<TicketStats> {
+    try {
+      console.log('🔌 Récupération stats tickets offline:', { userId, startDate, endDate });
+      const stats = await invoke<TicketStats>('get_ticket_statistics', {
+        userId,
+        startDate,
+        endDate,
+      });
+      console.log('✅ Stats tickets récupérées:', stats);
+      return stats;
+    } catch (error) {
+      console.error('❌ Erreur récupération stats tickets:', error);
       throw error;
     }
   },

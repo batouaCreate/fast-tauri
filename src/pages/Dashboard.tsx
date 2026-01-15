@@ -3,6 +3,7 @@ import { Package, Briefcase, Calendar, RefreshCw, Ticket, DollarSign, Bus } from
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { dashboardApi, DashboardData, departureApi, Departure, colisApi, Colis } from '../services/api';
+import { offlineTicketApi } from '../services/offline-api';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -55,15 +56,56 @@ const Dashboard: React.FC = () => {
         return;
       }
 
-      const response = await dashboardApi.getDashboard({
-        debut: formatDateForAPI(startDate),
-        fin: formatDateForAPI(endDate),
-        user: parseInt(userId),
-      });
+      // Charger les stats des tickets depuis la base locale
+      const ticketStats = await offlineTicketApi.getStatistics(
+        parseInt(userId),
+        formatDateForAPI(startDate),
+        formatDateForAPI(endDate)
+      );
 
-      setDashboardData(response.data);
+      console.log('📊 [DASHBOARD] Stats tickets locales:', ticketStats);
+
+      // Initialiser les données avec les valeurs locales des tickets
+      let dashboardDataTemp: DashboardData = {
+        cptcolis: 0,
+        colcais: 0,
+        cptbag: 0,
+        bagcais: 0,
+        nbtick: ticketStats.count,
+        totaltick: ticketStats.total,
+        caisse: ticketStats.total, // Le chiffre d'affaires inclut au minimum les tickets
+        statcolis: [],
+        statticket: [],
+        statbagage: [],
+      };
+
+      // Essayer de charger le reste des données depuis l'API en ligne
+      try {
+        const response = await dashboardApi.getDashboard({
+          debut: formatDateForAPI(startDate),
+          fin: formatDateForAPI(endDate),
+          user: parseInt(userId),
+        });
+
+        // Fusionner avec les données de l'API, mais garder les stats tickets locales
+        dashboardDataTemp = {
+          ...response.data,
+          nbtick: ticketStats.count,
+          totaltick: ticketStats.total,
+          // Recalculer le chiffre d'affaires total avec les données locales des tickets
+          caisse: (response.data.colcais || 0) + (response.data.bagcais || 0) + ticketStats.total,
+        };
+
+        console.log('✅ [DASHBOARD] Données fusionnées (local + API):', dashboardDataTemp);
+      } catch (apiError) {
+        console.warn('⚠️ [DASHBOARD] API non disponible, utilisation des données locales uniquement:', apiError);
+        // Garder les données avec seulement les stats tickets locales
+      }
+
+      setDashboardData(dashboardDataTemp);
       showToast('success', 'Succès', 'Données actualisées avec succès');
     } catch (error: any) {
+      console.error('❌ [DASHBOARD] Erreur:', error);
       showToast('error', 'Erreur', error.message || 'Erreur de chargement du dashboard');
     } finally {
       setLoading(false);

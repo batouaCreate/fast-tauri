@@ -831,3 +831,55 @@ pub fn sync_tickets_from_api(conn: &Connection, tickets_data: Vec<serde_json::Va
 
     Ok(count)
 }
+
+// ============== STATISTICS ==============
+
+pub fn get_ticket_stats(
+    conn: &Connection,
+    user_id: i64,
+    start_date: &str,
+    end_date: &str,
+) -> Result<(i64, f64)> {
+    println!("📊 [STATS] Paramètres reçus:");
+    println!("   - user_id: {}", user_id);
+    println!("   - start_date: {}", start_date);
+    println!("   - end_date: {}", end_date);
+
+    // Compter tous les tickets pour debug
+    let total_tickets: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM tickets WHERE tick_user = ?1",
+        params![user_id],
+        |row| row.get(0),
+    ).unwrap_or(0);
+    println!("   - Total tickets pour l'utilisateur: {}", total_tickets);
+
+    // Nombre de tickets dans la plage de dates
+    // created_at est au format RFC3339, donc on utilise une comparaison de chaînes
+    // SQLite compare les chaînes lexicographiquement, ce qui fonctionne pour les dates ISO
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM tickets
+         WHERE tick_user = ?1
+         AND datetime(created_at) >= datetime(?2)
+         AND datetime(created_at) <= datetime(?3)",
+        params![user_id, start_date, end_date],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    println!("   - Tickets dans la plage de dates: {}", count);
+
+    // Somme des montants (tick_price - tick_reduc)
+    // tick_price est stocké comme TEXT, donc on doit le convertir
+    let total: f64 = conn.query_row(
+        "SELECT COALESCE(SUM(CAST(tick_price AS REAL) - COALESCE(tick_reduc, 0)), 0)
+         FROM tickets
+         WHERE tick_user = ?1
+         AND datetime(created_at) >= datetime(?2)
+         AND datetime(created_at) <= datetime(?3)",
+        params![user_id, start_date, end_date],
+        |row| row.get(0),
+    ).unwrap_or(0.0);
+
+    println!("   - Total montant: {}", total);
+
+    Ok((count, total))
+}

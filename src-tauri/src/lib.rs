@@ -90,7 +90,9 @@ pub fn run() {
             commands::sync_destinations,
             commands::get_all_destinations_offline,
             commands::get_destinations_by_agence_offline,
-            commands::get_db_info
+            commands::get_db_info,
+            // Commandes pour les statistiques
+            commands::get_ticket_statistics
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,5 +1,5 @@
 use crate::db::{models::*, operations::*, Database};
-use crate::db::operations::{sync_agences_from_api, get_all_agences, sync_destinations_from_api, get_all_destinations, get_destinations_by_agence, sync_departures_from_api};
+use crate::db::operations::{sync_agences_from_api, get_all_agences, sync_destinations_from_api, get_all_destinations, get_destinations_by_agence, sync_departures_from_api, get_ticket_stats};
 use tauri::State;
 use std::sync::Mutex;
 
@@ -376,4 +376,26 @@ pub async fn force_sync(_state: State<'_, AppState>) -> Result<String, String> {
     // Cette commande pourrait déclencher une synchronisation immédiate
     // Pour l'instant, elle retourne juste un message
     Ok("Synchronisation lancée".to_string())
+}
+
+// ============== STATISTICS ==============
+
+#[derive(serde::Serialize)]
+pub struct TicketStats {
+    pub count: i64,
+    pub total: f64,
+}
+
+#[tauri::command]
+pub fn get_ticket_statistics(
+    state: State<AppState>,
+    user_id: i64,
+    start_date: String,
+    end_date: String,
+) -> Result<TicketStats, String> {
+    let db = state.db.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let (count, total) = get_ticket_stats(&db.conn, user_id, &start_date, &end_date)
+        .map_err(|e| format!("DB error: {}", e))?;
+
+    Ok(TicketStats { count, total })
 }
