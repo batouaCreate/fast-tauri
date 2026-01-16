@@ -17,6 +17,8 @@ interface User {
     city: string;
     currency: string;
   };
+  companyLogo?: string;
+  companyName?: string;
 }
 
 interface AuthContextType {
@@ -66,6 +68,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           city: '', // L'API ne retourne pas la ville
           currency: 'FCFA', // Valeur par défaut
         },
+        companyLogo: response.logo,
+        companyName: response.etpnom,
       };
 
       setUser(authenticatedUser);

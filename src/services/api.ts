@@ -65,6 +65,8 @@ export interface LoginResponse {
   usid: number;
   agid: number;
   msg: string;
+  logo?: string;
+  etpnom?: string;
 }
 
 export interface ApiError {

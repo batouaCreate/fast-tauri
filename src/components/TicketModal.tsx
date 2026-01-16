@@ -3,6 +3,7 @@ import { X, User, CreditCard, Loader2, Printer, MapPin } from 'lucide-react';
 import { Departure, Destination } from '../services/api';
 import { offlineDestinationApi, offlineTicketApi } from '../services/offline-api';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import { ThermalPrinter, TicketBuilder } from '../services/printer';
 import { PhoneInput } from 'react-international-phone';
 import 'react-international-phone/style.css';
@@ -38,6 +39,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
   const [paymentMethod, setPaymentMethod] = useState<string>('ESPECES');
   const [isSelling, setIsSelling] = useState(false);
   const { error: showError, success: showSuccess } = useToast();
+  const { user } = useAuth();
 
   // Charger les destinations disponibles depuis la BD locale
   useEffect(() => {
@@ -300,9 +302,9 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         dest_price: totalPrice.toString(),
       };
 
-      // Imprimer le ticket
+      // Imprimer le ticket avec le logo de l'entreprise
       if (selectedPrinter) {
-        await printTicket(ticketData);
+        await printTicket(ticketData, user?.companyLogo);
       }
 
       // Réinitialiser le formulaire
@@ -380,9 +382,9 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         dest_price: totalPrice.toString(),
       };
 
-      // Imprimer le ticket
+      // Imprimer le ticket avec le logo de l'entreprise
       if (selectedPrinter) {
-        await printTicket(ticketData);
+        await printTicket(ticketData, user?.companyLogo);
       }
 
       // Réinitialiser le formulaire
@@ -446,7 +448,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         isGratuit
       });
 
-      // Créer les données du ticket
+      // Créer les données du ticket avec le nom de l'entreprise
       const ticket = TicketBuilder.createTransportTicket({
         ticketNumber,
         departure,
@@ -458,6 +460,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         price,
         passenger: customerInfo.name || undefined,
         isGratuit, // Passer l'information pour adapter le total
+        companyName: user?.companyName,
       });
 
       // Préparer le logo
