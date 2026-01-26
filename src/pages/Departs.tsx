@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Bus, Clock, MapPin, Loader2, RefreshCw } from 'lucide-react';
+import { Bus, Clock, MapPin, Loader2, RefreshCw, Calendar } from 'lucide-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import TicketModal from '../components/TicketModal';
 import DepartureFormModal from '../components/DepartureFormModal';
 import BordereauBilletModal from '../components/BordereauBilletModal';
@@ -11,6 +13,20 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 
 const Departs: React.FC = () => {
+  // Initialiser les dates: aujourd'hui (J+0) jusqu'à dans 7 jours (J+7)
+  const getTodayStart = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  };
+
+  const getSevenDaysLater = () => {
+    const sevenDays = new Date();
+    sevenDays.setDate(sevenDays.getDate() + 7);
+    sevenDays.setHours(23, 59, 59, 999);
+    return sevenDays;
+  };
+
   const [selectedDeparture, setSelectedDeparture] = useState<Departure | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -22,6 +38,8 @@ const Departs: React.FC = () => {
   const [selectedBagageDepId, setSelectedBagageDepId] = useState<number | null>(null);
   const [departs, setDeparts] = useState<Departure[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [startDate, setStartDate] = useState<Date | null>(getTodayStart());
+  const [endDate, setEndDate] = useState<Date | null>(getSevenDaysLater());
   const { user } = useAuth();
   const { error: showError } = useToast();
 
@@ -40,9 +58,25 @@ const Departs: React.FC = () => {
       const offlineDeparts = await offlineDepartureApi.getAll(parseInt(user.id));
       console.log(`✅ [DEPARTS] ${offlineDeparts.length} départ(s) chargé(s) depuis la BD locale`);
 
+      // Filtrer les départs selon la période sélectionnée
+      const filteredDeparts = offlineDeparts.filter((dep: OfflineDeparture) => {
+        if (!startDate || !endDate) return true;
+
+        // Parser la date du départ (format: YYYY-MM-DD)
+        const depDate = new Date(dep.dep_date);
+        // Comparer uniquement la date (ignorer l'heure)
+        const depDateOnly = new Date(depDate.getFullYear(), depDate.getMonth(), depDate.getDate());
+        const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+        const endDateOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+        return depDateOnly >= startDateOnly && depDateOnly <= endDateOnly;
+      });
+
+      console.log(`📅 [DEPARTS] ${filteredDeparts.length} départ(s) dans la période sélectionnée`);
+
       // Charger le nombre de tickets et le montant total pour chaque départ
       const departsWithTickets = await Promise.all(
-        offlineDeparts.map(async (dep: OfflineDeparture) => {
+        filteredDeparts.map(async (dep: OfflineDeparture) => {
           let nbTickets = 0;
           let sumTickets = 0;
           try {
@@ -148,28 +182,80 @@ const Departs: React.FC = () => {
 
   return (
     <div>
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Départs</h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            {isLoading ? 'Chargement...' : `${departs.length} départ(s) disponible(s)`}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={loadDeparts}
-            disabled={isLoading}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
-            Actualiser
-          </button>
-          <button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="btn-primary"
-          >
-            Nouveau départ
-          </button>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Départs</h1>
+        <p className="text-gray-600 dark:text-gray-400">
+          {isLoading ? 'Chargement...' : `${departs.length} départ(s) disponible(s)`}
+        </p>
+      </div>
+
+      {/* Filtres */}
+      <div className="card mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Date de début */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Date de début
+            </label>
+            <div className="relative">
+              <DatePicker
+                selected={startDate}
+                onChange={(date) => setStartDate(date)}
+                showTimeSelect
+                timeFormat="HH:mm"
+                timeIntervals={15}
+                dateFormat="dd/MM/yyyy HH:mm"
+                placeholderText="Sélectionner la date de début"
+                className="input w-full pl-10"
+                wrapperClassName="w-full"
+              />
+              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+            </div>
+          </div>
+
+          {/* Date de fin */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Date de fin
+            </label>
+            <div className="relative">
+              <DatePicker
+                selected={endDate}
+                onChange={(date) => setEndDate(date)}
+                showTimeSelect
+                timeFormat="HH:mm"
+                timeIntervals={15}
+                dateFormat="dd/MM/yyyy HH:mm"
+                placeholderText="Sélectionner la date de fin"
+                className="input w-full pl-10"
+                wrapperClassName="w-full"
+                minDate={startDate || undefined}
+              />
+              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+            </div>
+          </div>
+
+          {/* Bouton Actualiser */}
+          <div className="flex items-end">
+            <button
+              onClick={loadDeparts}
+              disabled={isLoading}
+              className="btn-primary w-full flex items-center justify-center gap-2"
+            >
+              <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+              {isLoading ? 'Actualisation...' : 'Actualiser'}
+            </button>
+          </div>
+
+          {/* Bouton Nouveau départ */}
+          <div className="flex items-end">
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="btn-primary w-full"
+            >
+              Nouveau départ
+            </button>
+          </div>
         </div>
       </div>
 
