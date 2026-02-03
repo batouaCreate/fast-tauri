@@ -220,6 +220,7 @@ pub fn run() {
             // Commandes pour agences et destinations
             commands::sync_agences,
             commands::get_all_agences_offline,
+            commands::get_agences_by_entreprise_offline,
             commands::sync_destinations,
             commands::get_all_destinations_offline,
             commands::get_destinations_by_agence_offline,

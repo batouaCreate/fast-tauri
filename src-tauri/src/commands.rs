@@ -1,5 +1,5 @@
 use crate::db::{models::*, operations::*, Database};
-use crate::db::operations::{sync_agences_from_api, get_all_agences, sync_destinations_from_api, get_all_destinations, get_destinations_by_agence, sync_departures_from_api, get_ticket_stats, sync_entreprises_from_api, get_all_entreprises, sync_users_from_api, get_all_users, get_user_by_phone};
+use crate::db::operations::{sync_agences_from_api, get_all_agences, get_agences_by_entreprise, sync_destinations_from_api, get_all_destinations, get_destinations_by_agence, sync_departures_from_api, get_ticket_stats, sync_entreprises_from_api, get_all_entreprises, sync_users_from_api, get_all_users, get_user_by_phone};
 use tauri::{State, Manager};
 use std::sync::Mutex;
 use sha1::{Sha1, Digest};
@@ -276,6 +276,19 @@ pub fn get_all_agences_offline(state: State<AppState>) -> Result<Vec<Agence>, St
     let result = get_all_agences(&db.conn)
         .map_err(|e| format!("DB error: {}", e))?;
     println!("📦 [RUST] {} agences récupérées de la BD", result.len());
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn get_agences_by_entreprise_offline(
+    state: State<AppState>,
+    etp_id: i64,
+) -> Result<Vec<Agence>, String> {
+    println!("📖 [RUST] get_agences_by_entreprise_offline appelé pour etp_id: {}", etp_id);
+    let db = state.db.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let result = get_agences_by_entreprise(&db.conn, etp_id)
+        .map_err(|e| format!("DB error: {}", e))?;
+    println!("📦 [RUST] {} agences récupérées pour l'entreprise {}", result.len(), etp_id);
     Ok(result)
 }
 
@@ -652,15 +665,89 @@ pub fn login_offline(
 
     println!("🔐 [LOGIN] Password hashé: {}", hashed_password);
 
-    // Récupérer l'utilisateur par téléphone
-    let user = get_user_by_phone(&db.conn, &phone)
-        .map_err(|e| format!("DB error: {}", e))?
-        .ok_or_else(|| {
-            println!("❌ [LOGIN] Utilisateur non trouvé: {}", phone);
-            "Utilisateur non trouvé".to_string()
-        })?;
+    // Récupérer l'utilisateur, son agence et l'entreprise en une seule requête avec jointures
+    let result = db.conn.query_row(
+        "SELECT
+            u.id, u.remote_id, u.us_agence, u.us_type, u.us_code, u.us_nom,
+            u.us_email, u.us_phone, u.us_pass, u.us_stat, u.us_photo,
+            u.us_device, u.us_printer, u.created_at, u.updated_at,
+            a.id, a.remote_id, a.ag_code, a.ag_nom, a.ag_phone, a.ag_pays,
+            a.ag_ville, a.ag_devise, a.ag_prefix, a.ag_stat, a.ag_etp,
+            a.created_at, a.updated_at,
+            e.id, e.remote_id, e.etp_code, e.etp_sender, e.etp_nom, e.etp_mail,
+            e.etp_phone, e.etp_pays, e.etp_msgbagage, e.etp_msgcolis, e.etp_pass,
+            e.etp_stat, e.etp_img, e.etp_img_local, e.created_at, e.updated_at
+         FROM users u
+         INNER JOIN agences a ON u.us_agence = a.remote_id
+         INNER JOIN entreprises e ON a.ag_etp = e.remote_id
+         WHERE u.us_phone = ?1",
+        rusqlite::params![phone],
+        |row| {
+            let user = User {
+                id: row.get(0)?,
+                remote_id: row.get(1)?,
+                us_agence: row.get(2)?,
+                us_type: row.get(3)?,
+                us_code: row.get(4)?,
+                us_nom: row.get(5)?,
+                us_email: row.get(6)?,
+                us_phone: row.get(7)?,
+                us_pass: row.get(8)?,
+                us_stat: row.get(9)?,
+                us_photo: row.get(10)?,
+                us_device: row.get(11)?,
+                us_printer: row.get(12)?,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
+            };
+
+            let agence = Agence {
+                id: row.get(15)?,
+                remote_id: row.get(16)?,
+                ag_code: row.get(17)?,
+                ag_nom: row.get(18)?,
+                ag_phone: row.get(19)?,
+                ag_pays: row.get(20)?,
+                ag_ville: row.get(21)?,
+                ag_devise: row.get(22)?,
+                ag_prefix: row.get(23)?,
+                ag_stat: row.get(24)?,
+                ag_etp: row.get(25)?,
+                created_at: row.get(26)?,
+                updated_at: row.get(27)?,
+            };
+
+            let entreprise = Entreprise {
+                id: row.get(28)?,
+                remote_id: row.get(29)?,
+                etp_code: row.get(30)?,
+                etp_sender: row.get(31)?,
+                etp_nom: row.get(32)?,
+                etp_mail: row.get(33)?,
+                etp_phone: row.get(34)?,
+                etp_pays: row.get(35)?,
+                etp_msgbagage: row.get(36)?,
+                etp_msgcolis: row.get(37)?,
+                etp_pass: row.get(38)?,
+                etp_stat: row.get(39)?,
+                etp_img: row.get(40)?,
+                etp_img_local: row.get(41)?,
+                created_at: row.get(42)?,
+                updated_at: row.get(43)?,
+            };
+
+            Ok((user, agence, entreprise))
+        }
+    ).map_err(|e| {
+        println!("❌ [LOGIN] Utilisateur non trouvé ou données manquantes: {}", e);
+        "Utilisateur non trouvé ou données incomplètes (agence/entreprise manquante)".to_string()
+    })?;
+
+    let (user, agence, entreprise) = result;
 
     println!("✅ [LOGIN] Utilisateur trouvé: {}", user.us_nom);
+    println!("✅ [LOGIN] Agence trouvée: {}", agence.ag_nom);
+    println!("✅ [LOGIN] Entreprise trouvée: {}", entreprise.etp_nom);
     println!("🔐 [LOGIN] Hash stocké: {:?}", user.us_pass);
 
     // Vérifier le mot de passe
@@ -670,64 +757,6 @@ pub fn login_offline(
     }
 
     println!("✅ [LOGIN] Mot de passe correct");
-
-    // Récupérer l'agence de l'utilisateur
-    let agence = db.conn.query_row(
-        "SELECT id, remote_id, ag_code, ag_nom, ag_phone, ag_pays, ag_ville,
-                ag_devise, ag_prefix, ag_stat, ag_etp, created_at, updated_at
-         FROM agences WHERE remote_id = ?1",
-        rusqlite::params![user.us_agence],
-        |row| {
-            Ok(Agence {
-                id: row.get(0)?,
-                remote_id: row.get(1)?,
-                ag_code: row.get(2)?,
-                ag_nom: row.get(3)?,
-                ag_phone: row.get(4)?,
-                ag_pays: row.get(5)?,
-                ag_ville: row.get(6)?,
-                ag_devise: row.get(7)?,
-                ag_prefix: row.get(8)?,
-                ag_stat: row.get(9)?,
-                ag_etp: row.get(10)?,
-                created_at: row.get(11)?,
-                updated_at: row.get(12)?,
-            })
-        }
-    ).map_err(|e| format!("Agence non trouvée: {}", e))?;
-
-    println!("✅ [LOGIN] Agence trouvée: {}", agence.ag_nom);
-
-    // Récupérer l'entreprise
-    let entreprise = db.conn.query_row(
-        "SELECT id, remote_id, etp_code, etp_sender, etp_nom, etp_mail, etp_phone,
-                etp_pays, etp_msgbagage, etp_msgcolis, etp_pass, etp_stat, etp_img,
-                etp_img_local, created_at, updated_at
-         FROM entreprises WHERE remote_id = ?1",
-        rusqlite::params![agence.ag_etp],
-        |row| {
-            Ok(Entreprise {
-                id: row.get(0)?,
-                remote_id: row.get(1)?,
-                etp_code: row.get(2)?,
-                etp_sender: row.get(3)?,
-                etp_nom: row.get(4)?,
-                etp_mail: row.get(5)?,
-                etp_phone: row.get(6)?,
-                etp_pays: row.get(7)?,
-                etp_msgbagage: row.get(8)?,
-                etp_msgcolis: row.get(9)?,
-                etp_pass: row.get(10)?,
-                etp_stat: row.get(11)?,
-                etp_img: row.get(12)?,
-                etp_img_local: row.get(13)?,
-                created_at: row.get(14)?,
-                updated_at: row.get(15)?,
-            })
-        }
-    ).map_err(|e| format!("Entreprise non trouvée: {}", e))?;
-
-    println!("✅ [LOGIN] Entreprise trouvée: {}", entreprise.etp_nom);
     println!("🎉 [LOGIN] Connexion réussie pour: {}", user.us_nom);
 
     Ok(AuthResponse {

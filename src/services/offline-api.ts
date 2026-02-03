@@ -117,6 +117,7 @@ export interface OfflineAgence {
   ag_devise?: string;
   ag_prefix?: string;
   ag_stat?: string;
+  ag_etp?: number;
   created_at: string;
   updated_at: string;
 }
@@ -395,6 +396,20 @@ export const offlineAgenceApi = {
       return agences;
     } catch (error) {
       console.error('❌ Erreur récupération agences:', error);
+      throw error;
+    }
+  },
+
+  async getByEntreprise(etpId: number): Promise<OfflineAgence[]> {
+    try {
+      console.log('🔌 Récupération agences pour entreprise:', etpId);
+      const agences = await invoke<OfflineAgence[]>('get_agences_by_entreprise_offline', {
+        etpId,
+      });
+      console.log('✅ Agences filtrées pour entreprise:', agences.length);
+      return agences;
+    } catch (error) {
+      console.error('❌ Erreur récupération agences par entreprise:', error);
       throw error;
     }
   },

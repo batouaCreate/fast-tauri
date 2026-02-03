@@ -562,6 +562,36 @@ pub fn get_all_agences(conn: &Connection) -> Result<Vec<Agence>> {
     agences.collect()
 }
 
+pub fn get_agences_by_entreprise(conn: &Connection, etp_id: i64) -> Result<Vec<Agence>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, ag_code, ag_nom, ag_phone, ag_pays, ag_ville,
+                ag_devise, ag_prefix, ag_stat, ag_etp, created_at, updated_at
+         FROM agences
+         WHERE ag_etp = ?1
+         ORDER BY ag_nom ASC"
+    )?;
+
+    let agences = stmt.query_map([etp_id], |row| {
+        Ok(Agence {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            ag_code: row.get(2)?,
+            ag_nom: row.get(3)?,
+            ag_phone: row.get(4)?,
+            ag_pays: row.get(5)?,
+            ag_ville: row.get(6)?,
+            ag_devise: row.get(7)?,
+            ag_prefix: row.get(8)?,
+            ag_stat: row.get(9)?,
+            ag_etp: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
+        })
+    })?;
+
+    agences.collect()
+}
+
 // ============== DESTINATIONS ==============
 
 pub fn sync_destinations_from_api(conn: &Connection, destinations_data: Vec<serde_json::Value>) -> Result<usize> {

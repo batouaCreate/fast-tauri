@@ -19,6 +19,7 @@ interface User {
     city: string;
     currency: string;
   };
+  companyId?: number;
   companyLogo?: string;
   companyName?: string;
 }
@@ -91,6 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           city: response.agence.ag_ville || '',
           currency: response.agence.ag_devise || 'FCFA',
         },
+        companyId: response.entreprise.remote_id || response.entreprise.id,
         companyLogo: response.entreprise.etp_img_local || response.entreprise.etp_img,
         companyName: response.entreprise.etp_nom,
       };

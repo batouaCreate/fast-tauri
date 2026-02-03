@@ -30,6 +30,9 @@ impl Database {
     }
 
     fn create_tables(&self) -> Result<()> {
+        // Migrer les tables existantes si nécessaire
+        self.migrate_tables()?;
+
         // Table des départs
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS departures (
@@ -286,6 +289,30 @@ impl Database {
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_remote ON users(remote_id)",
             [],
         )?;
+
+        Ok(())
+    }
+
+    /// Migration pour ajouter des colonnes manquantes aux tables existantes
+    fn migrate_tables(&self) -> Result<()> {
+        // Vérifier si la colonne ag_etp existe dans la table agences
+        let column_exists: bool = self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('agences') WHERE name='ag_etp'",
+                [],
+                |row| row.get::<_, i32>(0)
+            )
+            .unwrap_or(0) > 0;
+
+        // Ajouter la colonne ag_etp si elle n'existe pas
+        if !column_exists {
+            println!("🔄 [MIGRATION] Ajout de la colonne ag_etp à la table agences");
+            self.conn.execute(
+                "ALTER TABLE agences ADD COLUMN ag_etp INTEGER",
+                []
+            )?;
+            println!("✅ [MIGRATION] Colonne ag_etp ajoutée avec succès");
+        }
 
         Ok(())
     }

@@ -49,20 +49,20 @@ const DepartureFormModal: React.FC<DepartureFormModalProps> = ({ isOpen, onClose
   }, [isOpen, user]);
 
   const loadGares = async () => {
-    if (!user) return;
+    if (!user || !user.companyId) return;
 
     try {
       setIsLoadingGares(true);
       console.log('📡 [DEPARTURE FORM] Chargement des agences depuis la BD locale...');
 
-      // Charger depuis la base de données locale
-      const agences = await offlineAgenceApi.getAll();
-      console.log(`✅ [DEPARTURE FORM] ${agences.length} agences chargées depuis la BD locale`);
+      // Charger uniquement les agences de la même entreprise que l'utilisateur
+      const agences = await offlineAgenceApi.getByEntreprise(user.companyId);
+      console.log(`✅ [DEPARTURE FORM] ${agences.length} agences chargées pour l'entreprise ${user.companyId}`);
 
       // Convertir les agences offline en format Gare pour compatibilité
       const garesData: Gare[] = agences.map(agence => ({
         ag_id: agence.remote_id || 0,
-        ag_etp: 0,
+        ag_etp: agence.ag_etp || 0,
         ag_code: agence.ag_code || '',
         ag_nom: agence.ag_nom,
         ag_phone: agence.ag_phone || '',
