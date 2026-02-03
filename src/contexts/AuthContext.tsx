@@ -40,7 +40,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Synchronisation automatique des tickets en arrière-plan
-  const ticketSyncStatus = useTicketSync({
+  // Le hook s'exécute automatiquement en arrière-plan, pas besoin d'utiliser son statut
+  useTicketSync({
     userId: user ? parseInt(user.id) : null,
     intervalMs: 5 * 60 * 1000, // Synchroniser toutes les 5 minutes
     enabled: isAuthenticated,
