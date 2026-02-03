@@ -1,6 +1,6 @@
 use crate::db::{models::*, operations::*, Database};
-use crate::db::operations::{sync_agences_from_api, get_all_agences, sync_destinations_from_api, get_all_destinations, get_destinations_by_agence, sync_departures_from_api, get_ticket_stats};
-use tauri::State;
+use crate::db::operations::{sync_agences_from_api, get_all_agences, sync_destinations_from_api, get_all_destinations, get_destinations_by_agence, sync_departures_from_api, get_ticket_stats, sync_entreprises_from_api, get_all_entreprises, sync_users_from_api, get_all_users};
+use tauri::{State, Manager};
 use std::sync::Mutex;
 
 pub struct AppState {
@@ -328,6 +328,86 @@ pub fn get_destinations_by_agence_offline(
         .map_err(|e| format!("DB error: {}", e))
 }
 
+// ============== ENTREPRISES ==============
+
+#[tauri::command]
+pub fn sync_entreprises(
+    state: State<AppState>,
+    entreprises_json: String,
+) -> Result<usize, String> {
+    println!("🔄 [RUST] sync_entreprises appelé");
+    println!("📊 [RUST] JSON reçu (taille): {} bytes", entreprises_json.len());
+
+    let db = state.db.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    let entreprises_data: Vec<serde_json::Value> = serde_json::from_str(&entreprises_json)
+        .map_err(|e| {
+            println!("❌ [RUST] Erreur parsing JSON: {}", e);
+            format!("JSON parse error: {}", e)
+        })?;
+
+    println!("📦 [RUST] Nombre d'entreprises à synchroniser: {}", entreprises_data.len());
+
+    let result = sync_entreprises_from_api(&db.conn, entreprises_data)
+        .map_err(|e| {
+            println!("❌ [RUST] Erreur DB: {}", e);
+            format!("DB error: {}", e)
+        })?;
+
+    println!("✅ [RUST] {} entreprises synchronisées avec succès", result);
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn get_all_entreprises_offline(state: State<AppState>) -> Result<Vec<Entreprise>, String> {
+    println!("📖 [RUST] get_all_entreprises_offline appelé");
+    let db = state.db.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let result = get_all_entreprises(&db.conn)
+        .map_err(|e| format!("DB error: {}", e))?;
+    println!("📦 [RUST] {} entreprises récupérées de la BD", result.len());
+    Ok(result)
+}
+
+// ============== USERS ==============
+
+#[tauri::command]
+pub fn sync_users(
+    state: State<AppState>,
+    users_json: String,
+) -> Result<usize, String> {
+    println!("🔄 [RUST] sync_users appelé");
+    println!("📊 [RUST] JSON reçu (taille): {} bytes", users_json.len());
+
+    let db = state.db.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    let users_data: Vec<serde_json::Value> = serde_json::from_str(&users_json)
+        .map_err(|e| {
+            println!("❌ [RUST] Erreur parsing JSON: {}", e);
+            format!("JSON parse error: {}", e)
+        })?;
+
+    println!("📦 [RUST] Nombre d'utilisateurs à synchroniser: {}", users_data.len());
+
+    let result = sync_users_from_api(&db.conn, users_data)
+        .map_err(|e| {
+            println!("❌ [RUST] Erreur DB: {}", e);
+            format!("DB error: {}", e)
+        })?;
+
+    println!("✅ [RUST] {} utilisateurs synchronisés avec succès", result);
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn get_all_users_offline(state: State<AppState>) -> Result<Vec<User>, String> {
+    println!("📖 [RUST] get_all_users_offline appelé");
+    let db = state.db.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let result = get_all_users(&db.conn)
+        .map_err(|e| format!("DB error: {}", e))?;
+    println!("📦 [RUST] {} utilisateurs récupérés de la BD", result.len());
+    Ok(result)
+}
+
 // ============== DIAGNOSTIC ==============
 
 #[tauri::command]
@@ -356,13 +436,25 @@ pub fn get_db_info(state: State<AppState>) -> Result<String, String> {
         .query_row("SELECT COUNT(*) FROM tickets", [], |row| row.get::<_, i64>(0))
         .unwrap_or(0);
 
+    // Compter les entreprises
+    let count_entreprises = db.conn
+        .query_row("SELECT COUNT(*) FROM entreprises", [], |row| row.get::<_, i64>(0))
+        .unwrap_or(0);
+
+    // Compter les utilisateurs
+    let count_users = db.conn
+        .query_row("SELECT COUNT(*) FROM users", [], |row| row.get::<_, i64>(0))
+        .unwrap_or(0);
+
     let info = format!(
         "📊 Statistiques BD:\n\
+         - Entreprises: {}\n\
          - Agences: {}\n\
+         - Users: {}\n\
          - Destinations: {}\n\
          - Départs: {}\n\
          - Tickets: {}",
-        count_agences, count_destinations, count_departures, count_tickets
+        count_entreprises, count_agences, count_users, count_destinations, count_departures, count_tickets
     );
 
     println!("{}", info);
@@ -376,6 +468,161 @@ pub async fn force_sync(_state: State<'_, AppState>) -> Result<String, String> {
     // Cette commande pourrait déclencher une synchronisation immédiate
     // Pour l'instant, elle retourne juste un message
     Ok("Synchronisation lancée".to_string())
+}
+
+// ============== SYNC USERS DATA ==============
+
+#[tauri::command]
+pub async fn sync_users_data(app_handle: tauri::AppHandle) -> Result<String, String> {
+    println!("🔄 [MANUAL SYNC] Synchronisation manuelle des données utilisateurs...");
+
+    let client = reqwest::Client::new();
+    match client.get("https://guichet.createsarl.com/api/users").send().await {
+        Ok(response) => {
+            match response.json::<serde_json::Value>().await {
+                Ok(json_data) => {
+                    if let Some(data_array) = json_data.get("data").and_then(|d| d.as_array()) {
+                        println!("📦 [MANUAL SYNC] {} enregistrements reçus", data_array.len());
+
+                        // Séparer les données par type
+                        let mut entreprises = Vec::new();
+                        let mut agences = Vec::new();
+                        let mut users = Vec::new();
+
+                        // Créer des sets pour dédupliquer
+                        let mut etp_ids = std::collections::HashSet::new();
+                        let mut ag_ids = std::collections::HashSet::new();
+                        let mut us_ids = std::collections::HashSet::new();
+
+                        for item in data_array {
+                            // Extraire entreprise
+                            if let Some(etp_id) = item.get("etp_id").and_then(|v| v.as_i64()) {
+                                if etp_ids.insert(etp_id) {
+                                    let mut etp = serde_json::Map::new();
+                                    for (key, value) in item.as_object().unwrap() {
+                                        if key.starts_with("etp_") || key == "etp_id" {
+                                            etp.insert(key.clone(), value.clone());
+                                        }
+                                    }
+                                    entreprises.push(serde_json::Value::Object(etp));
+                                }
+                            }
+
+                            // Extraire agence
+                            if let Some(ag_id) = item.get("ag_id").and_then(|v| v.as_i64()) {
+                                if ag_ids.insert(ag_id) {
+                                    let mut ag = serde_json::Map::new();
+                                    for (key, value) in item.as_object().unwrap() {
+                                        if key.starts_with("ag_") || key == "ag_id" {
+                                            ag.insert(key.clone(), value.clone());
+                                        }
+                                    }
+                                    agences.push(serde_json::Value::Object(ag));
+                                }
+                            }
+
+                            // Extraire user
+                            if let Some(us_id) = item.get("us_id").and_then(|v| v.as_i64()) {
+                                if us_ids.insert(us_id) {
+                                    let mut us = serde_json::Map::new();
+                                    for (key, value) in item.as_object().unwrap() {
+                                        if key.starts_with("us_") || key == "us_id" {
+                                            us.insert(key.clone(), value.clone());
+                                        }
+                                    }
+                                    users.push(serde_json::Value::Object(us));
+                                }
+                            }
+                        }
+
+                        println!("📊 [MANUAL SYNC] Données séparées: {} entreprises, {} agences, {} users",
+                            entreprises.len(), agences.len(), users.len());
+
+                        // Obtenir la connexion à la BD
+                        let app_dir = app_handle
+                            .path()
+                            .app_data_dir()
+                            .map_err(|e| format!("Erreur app_data_dir: {}", e))?;
+                        let db_path = app_dir.join("fast_app.db");
+
+                        let conn = rusqlite::Connection::open(&db_path)
+                            .map_err(|e| format!("Erreur connexion BD: {}", e))?;
+
+                        let mut synced_count = 0;
+
+                        // Synchroniser entreprises
+                        if !entreprises.is_empty() {
+                            match sync_entreprises_from_api(&conn, entreprises.clone()) {
+                                Ok(count) => {
+                                    println!("✅ [MANUAL SYNC] {} entreprises synchronisées", count);
+                                    synced_count += count;
+
+                                    // Télécharger les images des entreprises
+                                    for etp in &entreprises {
+                                        if let (Some(etp_id), Some(etp_img)) = (
+                                            etp.get("etp_id").and_then(|v| v.as_i64()),
+                                            etp.get("etp_img").and_then(|v| v.as_str())
+                                        ) {
+                                            if !etp_img.is_empty() {
+                                                println!("📥 [MANUAL SYNC] Téléchargement image pour entreprise {}", etp_id);
+                                                match crate::db::operations::download_entreprise_image(
+                                                    &db_path,
+                                                    etp_id,
+                                                    etp_img,
+                                                    &app_dir
+                                                ).await {
+                                                    Ok(path) => println!("✅ [MANUAL SYNC] Image téléchargée: {}", path),
+                                                    Err(e) => println!("⚠️ [MANUAL SYNC] Erreur téléchargement image: {}", e),
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    println!("❌ [MANUAL SYNC] Erreur sync entreprises: {}", e);
+                                    return Err(format!("Erreur sync entreprises: {}", e));
+                                }
+                            }
+                        }
+
+                        // Synchroniser agences
+                        if !agences.is_empty() {
+                            match sync_agences_from_api(&conn, agences) {
+                                Ok(count) => {
+                                    println!("✅ [MANUAL SYNC] {} agences synchronisées", count);
+                                    synced_count += count;
+                                }
+                                Err(e) => {
+                                    println!("❌ [MANUAL SYNC] Erreur sync agences: {}", e);
+                                    return Err(format!("Erreur sync agences: {}", e));
+                                }
+                            }
+                        }
+
+                        // Synchroniser users
+                        if !users.is_empty() {
+                            match sync_users_from_api(&conn, users) {
+                                Ok(count) => {
+                                    println!("✅ [MANUAL SYNC] {} utilisateurs synchronisés", count);
+                                    synced_count += count;
+                                }
+                                Err(e) => {
+                                    println!("❌ [MANUAL SYNC] Erreur sync users: {}", e);
+                                    return Err(format!("Erreur sync users: {}", e));
+                                }
+                            }
+                        }
+
+                        Ok(format!("✅ {} données synchronisées avec succès", synced_count))
+                    } else {
+                        Err("Format de réponse inattendu".to_string())
+                    }
+                }
+                Err(e) => Err(format!("Erreur parsing JSON: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("Erreur appel API: {}", e)),
+    }
 }
 
 // ============== STATISTICS ==============

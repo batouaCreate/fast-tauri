@@ -44,6 +44,139 @@ pub fn run() {
             });
             println!("✅ [STARTUP] Base de données prête");
 
+            // Synchroniser les données utilisateurs au démarrage
+            let app_handle_sync = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                println!("🔄 [STARTUP] Synchronisation des données utilisateurs...");
+
+                let client = reqwest::Client::new();
+                match client.get("https://guichet.createsarl.com/api/users").send().await {
+                    Ok(response) => {
+                        match response.json::<serde_json::Value>().await {
+                            Ok(json_data) => {
+                                if let Some(data_array) = json_data.get("data").and_then(|d| d.as_array()) {
+                                    println!("📦 [STARTUP] {} enregistrements reçus", data_array.len());
+
+                                    // Séparer les données par type
+                                    let mut entreprises = Vec::new();
+                                    let mut agences = Vec::new();
+                                    let mut users = Vec::new();
+
+                                    // Créer des sets pour dédupliquer
+                                    let mut etp_ids = std::collections::HashSet::new();
+                                    let mut ag_ids = std::collections::HashSet::new();
+                                    let mut us_ids = std::collections::HashSet::new();
+
+                                    for item in data_array {
+                                        // Extraire entreprise
+                                        if let Some(etp_id) = item.get("etp_id").and_then(|v| v.as_i64()) {
+                                            if etp_ids.insert(etp_id) {
+                                                let mut etp = serde_json::Map::new();
+                                                for (key, value) in item.as_object().unwrap() {
+                                                    if key.starts_with("etp_") || key == "etp_id" {
+                                                        etp.insert(key.clone(), value.clone());
+                                                    }
+                                                }
+                                                entreprises.push(serde_json::Value::Object(etp));
+                                            }
+                                        }
+
+                                        // Extraire agence
+                                        if let Some(ag_id) = item.get("ag_id").and_then(|v| v.as_i64()) {
+                                            if ag_ids.insert(ag_id) {
+                                                let mut ag = serde_json::Map::new();
+                                                for (key, value) in item.as_object().unwrap() {
+                                                    if key.starts_with("ag_") || key == "ag_id" {
+                                                        ag.insert(key.clone(), value.clone());
+                                                    }
+                                                }
+                                                agences.push(serde_json::Value::Object(ag));
+                                            }
+                                        }
+
+                                        // Extraire user
+                                        if let Some(us_id) = item.get("us_id").and_then(|v| v.as_i64()) {
+                                            if us_ids.insert(us_id) {
+                                                let mut us = serde_json::Map::new();
+                                                for (key, value) in item.as_object().unwrap() {
+                                                    if key.starts_with("us_") || key == "us_id" {
+                                                        us.insert(key.clone(), value.clone());
+                                                    }
+                                                }
+                                                users.push(serde_json::Value::Object(us));
+                                            }
+                                        }
+                                    }
+
+                                    println!("📊 [STARTUP] Données séparées: {} entreprises, {} agences, {} users",
+                                        entreprises.len(), agences.len(), users.len());
+
+                                    // Obtenir la connexion à la BD
+                                    let app_dir = app_handle_sync
+                                        .path()
+                                        .app_data_dir()
+                                        .expect("Failed to get app data dir");
+                                    let db_path = app_dir.join("fast_app.db");
+
+                                    if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                                        // Synchroniser entreprises
+                                        if !entreprises.is_empty() {
+                                            match db::operations::sync_entreprises_from_api(&conn, entreprises.clone()) {
+                                                Ok(count) => println!("✅ [STARTUP] {} entreprises synchronisées", count),
+                                                Err(e) => println!("❌ [STARTUP] Erreur sync entreprises: {}", e),
+                                            }
+
+                                            // Télécharger les images des entreprises
+                                            for etp in &entreprises {
+                                                if let (Some(etp_id), Some(etp_img)) = (
+                                                    etp.get("etp_id").and_then(|v| v.as_i64()),
+                                                    etp.get("etp_img").and_then(|v| v.as_str())
+                                                ) {
+                                                    if !etp_img.is_empty() {
+                                                        println!("📥 [STARTUP] Téléchargement image pour entreprise {}", etp_id);
+                                                        match db::operations::download_entreprise_image(
+                                                            &db_path,
+                                                            etp_id,
+                                                            etp_img,
+                                                            &app_dir
+                                                        ).await {
+                                                            Ok(path) => println!("✅ [STARTUP] Image téléchargée: {}", path),
+                                                            Err(e) => println!("⚠️ [STARTUP] Erreur téléchargement image: {}", e),
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Synchroniser agences
+                                        if !agences.is_empty() {
+                                            match db::operations::sync_agences_from_api(&conn, agences) {
+                                                Ok(count) => println!("✅ [STARTUP] {} agences synchronisées", count),
+                                                Err(e) => println!("❌ [STARTUP] Erreur sync agences: {}", e),
+                                            }
+                                        }
+
+                                        // Synchroniser users
+                                        if !users.is_empty() {
+                                            match db::operations::sync_users_from_api(&conn, users) {
+                                                Ok(count) => println!("✅ [STARTUP] {} utilisateurs synchronisés", count),
+                                                Err(e) => println!("❌ [STARTUP] Erreur sync users: {}", e),
+                                            }
+                                        }
+                                    } else {
+                                        println!("❌ [STARTUP] Impossible d'ouvrir la connexion BD");
+                                    }
+                                } else {
+                                    println!("⚠️ [STARTUP] Format de réponse inattendu");
+                                }
+                            }
+                            Err(e) => println!("❌ [STARTUP] Erreur parsing JSON: {}", e),
+                        }
+                    }
+                    Err(e) => println!("❌ [STARTUP] Erreur appel API: {}", e),
+                }
+            });
+
             // Démarrer le worker de synchronisation en arrière-plan
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -90,7 +223,14 @@ pub fn run() {
             commands::sync_destinations,
             commands::get_all_destinations_offline,
             commands::get_destinations_by_agence_offline,
+            // Commandes pour entreprises et users
+            commands::sync_entreprises,
+            commands::get_all_entreprises_offline,
+            commands::sync_users,
+            commands::get_all_users_offline,
             commands::get_db_info,
+            // Commandes pour synchronisation manuelle
+            commands::sync_users_data,
             // Commandes pour les statistiques
             commands::get_ticket_statistics
         ])

@@ -154,6 +154,29 @@ impl Database {
             [],
         )?;
 
+        // Table des entreprises
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS entreprises (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                remote_id INTEGER UNIQUE,
+                etp_code TEXT,
+                etp_sender TEXT,
+                etp_nom TEXT NOT NULL,
+                etp_mail TEXT,
+                etp_phone TEXT,
+                etp_pays TEXT,
+                etp_msgbagage TEXT,
+                etp_msgcolis TEXT,
+                etp_pass TEXT,
+                etp_stat TEXT,
+                etp_img TEXT,
+                etp_img_local TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
         // Table des agences (gares de destination)
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS agences (
@@ -167,8 +190,33 @@ impl Database {
                 ag_devise TEXT,
                 ag_prefix TEXT,
                 ag_stat TEXT,
+                ag_etp INTEGER,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (ag_etp) REFERENCES entreprises(remote_id)
+            )",
+            [],
+        )?;
+
+        // Table des utilisateurs
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                remote_id INTEGER UNIQUE,
+                us_agence INTEGER NOT NULL,
+                us_type TEXT,
+                us_code TEXT,
+                us_nom TEXT NOT NULL,
+                us_email TEXT,
+                us_phone TEXT,
+                us_pass TEXT,
+                us_stat TEXT,
+                us_photo TEXT,
+                us_device TEXT,
+                us_printer TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (us_agence) REFERENCES agences(remote_id)
             )",
             [],
         )?;
@@ -226,6 +274,16 @@ impl Database {
 
         self.conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_destinations_remote ON destinations(remote_id)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_entreprises_remote ON entreprises(remote_id)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_remote ON users(remote_id)",
             [],
         )?;
 

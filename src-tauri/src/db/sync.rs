@@ -4,7 +4,6 @@ use rusqlite::Connection;
 use serde_json::json;
 use std::time::Duration;
 use tokio::time::sleep;
-use chrono::Utc;
 
 pub struct SyncManager {
     api_base_url: String,

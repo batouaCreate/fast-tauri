@@ -507,10 +507,10 @@ pub fn sync_agences_from_api(conn: &Connection, agences_data: Vec<serde_json::Va
         conn.execute(
             "INSERT OR REPLACE INTO agences (
                 remote_id, ag_code, ag_nom, ag_phone, ag_pays, ag_ville,
-                ag_devise, ag_prefix, ag_stat, created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
-                COALESCE((SELECT created_at FROM agences WHERE remote_id = ?1), ?10),
-                ?11
+                ag_devise, ag_prefix, ag_stat, ag_etp, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                COALESCE((SELECT created_at FROM agences WHERE remote_id = ?1), ?11),
+                ?12
             )",
             params![
                 remote_id,
@@ -522,6 +522,7 @@ pub fn sync_agences_from_api(conn: &Connection, agences_data: Vec<serde_json::Va
                 agence["ag_devise"].as_str(),
                 agence["ag_prefix"].as_str(),
                 agence["ag_stat"].as_str(),
+                agence["ag_etp"].as_i64(),
                 now,
                 now,
             ],
@@ -535,7 +536,7 @@ pub fn sync_agences_from_api(conn: &Connection, agences_data: Vec<serde_json::Va
 pub fn get_all_agences(conn: &Connection) -> Result<Vec<Agence>> {
     let mut stmt = conn.prepare(
         "SELECT id, remote_id, ag_code, ag_nom, ag_phone, ag_pays, ag_ville,
-                ag_devise, ag_prefix, ag_stat, created_at, updated_at
+                ag_devise, ag_prefix, ag_stat, ag_etp, created_at, updated_at
          FROM agences
          ORDER BY ag_nom ASC"
     )?;
@@ -552,8 +553,9 @@ pub fn get_all_agences(conn: &Connection) -> Result<Vec<Agence>> {
             ag_devise: row.get(7)?,
             ag_prefix: row.get(8)?,
             ag_stat: row.get(9)?,
-            created_at: row.get(10)?,
-            updated_at: row.get(11)?,
+            ag_etp: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
         })
     })?;
 
@@ -882,4 +884,226 @@ pub fn get_ticket_stats(
     println!("   - Total montant: {}", total);
 
     Ok((count, total))
+}
+
+// ============== ENTREPRISES ==============
+
+pub fn sync_entreprises_from_api(conn: &Connection, entreprises_data: Vec<serde_json::Value>) -> Result<usize> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut count = 0;
+
+    for etp in entreprises_data {
+        let remote_id = etp["etp_id"].as_i64().unwrap_or(0);
+
+        // Utiliser INSERT OR REPLACE pour éviter les doublons
+        conn.execute(
+            "INSERT OR REPLACE INTO entreprises (
+                remote_id, etp_code, etp_sender, etp_nom, etp_mail, etp_phone,
+                etp_pays, etp_msgbagage, etp_msgcolis, etp_pass, etp_stat, etp_img,
+                created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                COALESCE((SELECT created_at FROM entreprises WHERE remote_id = ?1), ?13),
+                ?14
+            )",
+            params![
+                remote_id,
+                etp["etp_code"].as_str(),
+                etp["etp_sender"].as_str(),
+                etp["etp_nom"].as_str().unwrap_or(""),
+                etp["etp_mail"].as_str(),
+                etp["etp_phone"].as_str(),
+                etp["etp_pays"].as_str(),
+                etp["etp_msgbagage"].as_str(),
+                etp["etp_msgcolis"].as_str(),
+                etp["etp_pass"].as_str(),
+                etp["etp_stat"].as_str(),
+                etp["etp_img"].as_str(),
+                now,
+                now,
+            ],
+        )?;
+        count += 1;
+    }
+
+    Ok(count)
+}
+
+pub fn get_all_entreprises(conn: &Connection) -> Result<Vec<Entreprise>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, etp_code, etp_sender, etp_nom, etp_mail, etp_phone,
+                etp_pays, etp_msgbagage, etp_msgcolis, etp_pass, etp_stat, etp_img,
+                etp_img_local, created_at, updated_at
+         FROM entreprises
+         ORDER BY etp_nom ASC"
+    )?;
+
+    let entreprises = stmt.query_map([], |row| {
+        Ok(Entreprise {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            etp_code: row.get(2)?,
+            etp_sender: row.get(3)?,
+            etp_nom: row.get(4)?,
+            etp_mail: row.get(5)?,
+            etp_phone: row.get(6)?,
+            etp_pays: row.get(7)?,
+            etp_msgbagage: row.get(8)?,
+            etp_msgcolis: row.get(9)?,
+            etp_pass: row.get(10)?,
+            etp_stat: row.get(11)?,
+            etp_img: row.get(12)?,
+            etp_img_local: row.get(13)?,
+            created_at: row.get(14)?,
+            updated_at: row.get(15)?,
+        })
+    })?;
+
+    entreprises.collect()
+}
+
+pub fn update_entreprise_img_local(conn: &Connection, remote_id: i64, img_local_path: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE entreprises SET etp_img_local = ?1, updated_at = ?2 WHERE remote_id = ?3",
+        params![img_local_path, Utc::now().to_rfc3339(), remote_id],
+    )?;
+    Ok(())
+}
+
+// ============== USERS ==============
+
+pub fn sync_users_from_api(conn: &Connection, users_data: Vec<serde_json::Value>) -> Result<usize> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut count = 0;
+
+    for user in users_data {
+        let remote_id = user["us_id"].as_i64().unwrap_or(0);
+
+        // Utiliser INSERT OR REPLACE pour éviter les doublons
+        conn.execute(
+            "INSERT OR REPLACE INTO users (
+                remote_id, us_agence, us_type, us_code, us_nom, us_email, us_phone,
+                us_pass, us_stat, us_photo, us_device, us_printer,
+                created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                COALESCE((SELECT created_at FROM users WHERE remote_id = ?1), ?13),
+                ?14
+            )",
+            params![
+                remote_id,
+                user["us_agence"].as_i64().unwrap_or(0),
+                user["us_type"].as_str(),
+                user["us_code"].as_str(),
+                user["us_nom"].as_str().unwrap_or(""),
+                user["us_email"].as_str(),
+                user["us_phone"].as_str(),
+                user["us_pass"].as_str(),
+                user["us_stat"].as_str(),
+                user["us_photo"].as_str(),
+                user["us_device"].as_str(),
+                user["us_printer"].as_str(),
+                now,
+                now,
+            ],
+        )?;
+        count += 1;
+    }
+
+    Ok(count)
+}
+
+pub fn get_all_users(conn: &Connection) -> Result<Vec<User>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, us_agence, us_type, us_code, us_nom, us_email, us_phone,
+                us_pass, us_stat, us_photo, us_device, us_printer,
+                created_at, updated_at
+         FROM users
+         ORDER BY us_nom ASC"
+    )?;
+
+    let users = stmt.query_map([], |row| {
+        Ok(User {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            us_agence: row.get(2)?,
+            us_type: row.get(3)?,
+            us_code: row.get(4)?,
+            us_nom: row.get(5)?,
+            us_email: row.get(6)?,
+            us_phone: row.get(7)?,
+            us_pass: row.get(8)?,
+            us_stat: row.get(9)?,
+            us_photo: row.get(10)?,
+            us_device: row.get(11)?,
+            us_printer: row.get(12)?,
+            created_at: row.get(13)?,
+            updated_at: row.get(14)?,
+        })
+    })?;
+
+    users.collect()
+}
+
+// ============== IMAGE DOWNLOAD ==============
+
+pub async fn download_entreprise_image(
+    db_path: &std::path::Path,
+    remote_id: i64,
+    image_url: &str,
+    app_data_dir: &std::path::Path,
+) -> Result<String> {
+    use std::fs;
+
+    // Créer le répertoire pour les images si nécessaire
+    let images_dir = app_data_dir.join("images");
+    fs::create_dir_all(&images_dir).map_err(|e| {
+        rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+    })?;
+
+    // Extraire l'extension du fichier de l'URL
+    let extension = image_url
+        .split('.')
+        .last()
+        .unwrap_or("jpg");
+
+    let filename = format!("etp_{}.{}", remote_id, extension);
+    let file_path = images_dir.join(&filename);
+
+    // Télécharger l'image
+    let client = reqwest::Client::new();
+    match client.get(image_url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.bytes().await {
+                    Ok(bytes) => {
+                        fs::write(&file_path, &bytes).map_err(|e| {
+                            rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+                        })?;
+
+                        let local_path = file_path.to_string_lossy().to_string();
+
+                        // Mettre à jour la BD avec le chemin local (ouvrir une nouvelle connexion)
+                        let conn = Connection::open(db_path)?;
+                        update_entreprise_img_local(&conn, remote_id, &local_path)?;
+
+                        println!("✅ [IMAGE] Image téléchargée pour entreprise {}: {}", remote_id, local_path);
+                        Ok(local_path)
+                    }
+                    Err(e) => {
+                        println!("❌ [IMAGE] Erreur lors de la lecture des bytes: {}", e);
+                        Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+                    }
+                }
+            } else {
+                let err_msg = format!("HTTP error: {}", response.status());
+                println!("❌ [IMAGE] {}", err_msg);
+                Err(rusqlite::Error::ToSqlConversionFailure(
+                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, err_msg))
+                ))
+            }
+        }
+        Err(e) => {
+            println!("❌ [IMAGE] Erreur lors du téléchargement: {}", e);
+            Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+        }
+    }
 }

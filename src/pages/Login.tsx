@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Car, Phone, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Car, Phone, Lock, Eye, EyeOff, Loader2, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { invoke } from '@tauri-apps/api/core';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +28,20 @@ const Login: React.FC = () => {
       showError('Erreur de connexion', errorMessage);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSyncData = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await invoke<string>('sync_users_data');
+      showSuccess('Synchronisation réussie', result);
+    } catch (error) {
+      console.error('Erreur de synchronisation:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Erreur lors de la synchronisation';
+      showError('Erreur de synchronisation', errorMessage);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -110,6 +126,31 @@ const Login: React.FC = () => {
               {isLoading ? 'Connexion en cours...' : 'Se connecter'}
             </button>
           </form>
+
+          {/* Bouton de synchronisation des données */}
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={handleSyncData}
+              disabled={isSyncing}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-medium rounded-xl hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-soft"
+            >
+              {isSyncing ? (
+                <>
+                  <Loader2 className="animate-spin" size={20} />
+                  <span>Téléchargement en cours...</span>
+                </>
+              ) : (
+                <>
+                  <Download size={20} />
+                  <span>Télécharger les données</span>
+                </>
+              )}
+            </button>
+            <p className="text-xs text-gray-500 text-center mt-2">
+              Synchroniser les entreprises, agences et utilisateurs
+            </p>
+          </div>
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">

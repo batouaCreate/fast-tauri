@@ -146,6 +146,46 @@ pub struct Agence {
     pub ag_devise: Option<String>,
     pub ag_prefix: Option<String>,
     pub ag_stat: Option<String>,
+    pub ag_etp: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Entreprise {
+    pub id: Option<i64>,
+    pub remote_id: Option<i64>,
+    pub etp_code: Option<String>,
+    pub etp_sender: Option<String>,
+    pub etp_nom: String,
+    pub etp_mail: Option<String>,
+    pub etp_phone: Option<String>,
+    pub etp_pays: Option<String>,
+    pub etp_msgbagage: Option<String>,
+    pub etp_msgcolis: Option<String>,
+    pub etp_pass: Option<String>,
+    pub etp_stat: Option<String>,
+    pub etp_img: Option<String>,
+    pub etp_img_local: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub id: Option<i64>,
+    pub remote_id: Option<i64>,
+    pub us_agence: i64,
+    pub us_type: Option<String>,
+    pub us_code: Option<String>,
+    pub us_nom: String,
+    pub us_email: Option<String>,
+    pub us_phone: Option<String>,
+    pub us_pass: Option<String>,
+    pub us_stat: Option<String>,
+    pub us_photo: Option<String>,
+    pub us_device: Option<String>,
+    pub us_printer: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
