@@ -1,7 +1,8 @@
 use crate::db::{models::*, operations::*, Database};
-use crate::db::operations::{sync_agences_from_api, get_all_agences, sync_destinations_from_api, get_all_destinations, get_destinations_by_agence, sync_departures_from_api, get_ticket_stats, sync_entreprises_from_api, get_all_entreprises, sync_users_from_api, get_all_users};
+use crate::db::operations::{sync_agences_from_api, get_all_agences, sync_destinations_from_api, get_all_destinations, get_destinations_by_agence, sync_departures_from_api, get_ticket_stats, sync_entreprises_from_api, get_all_entreprises, sync_users_from_api, get_all_users, get_user_by_phone};
 use tauri::{State, Manager};
 use std::sync::Mutex;
+use sha1::{Sha1, Digest};
 
 pub struct AppState {
     pub db: Mutex<Database>,
@@ -625,6 +626,117 @@ pub async fn sync_users_data(app_handle: tauri::AppHandle) -> Result<String, Str
     }
 }
 
+// ============== AUTHENTICATION ==============
+
+#[derive(serde::Serialize)]
+pub struct AuthResponse {
+    pub user: User,
+    pub agence: Agence,
+    pub entreprise: Entreprise,
+}
+
+#[tauri::command]
+pub fn login_offline(
+    state: State<AppState>,
+    phone: String,
+    password: String,
+) -> Result<AuthResponse, String> {
+    println!("🔐 [LOGIN] Tentative de connexion pour: {}", phone);
+
+    let db = state.db.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    // Hasher le mot de passe en SHA1
+    let mut hasher = Sha1::new();
+    hasher.update(password.as_bytes());
+    let hashed_password = format!("{:x}", hasher.finalize());
+
+    println!("🔐 [LOGIN] Password hashé: {}", hashed_password);
+
+    // Récupérer l'utilisateur par téléphone
+    let user = get_user_by_phone(&db.conn, &phone)
+        .map_err(|e| format!("DB error: {}", e))?
+        .ok_or_else(|| {
+            println!("❌ [LOGIN] Utilisateur non trouvé: {}", phone);
+            "Utilisateur non trouvé".to_string()
+        })?;
+
+    println!("✅ [LOGIN] Utilisateur trouvé: {}", user.us_nom);
+    println!("🔐 [LOGIN] Hash stocké: {:?}", user.us_pass);
+
+    // Vérifier le mot de passe
+    if user.us_pass.as_ref().map(|p| p.as_str()) != Some(&hashed_password) {
+        println!("❌ [LOGIN] Mot de passe incorrect");
+        return Err("Mot de passe incorrect".to_string());
+    }
+
+    println!("✅ [LOGIN] Mot de passe correct");
+
+    // Récupérer l'agence de l'utilisateur
+    let agence = db.conn.query_row(
+        "SELECT id, remote_id, ag_code, ag_nom, ag_phone, ag_pays, ag_ville,
+                ag_devise, ag_prefix, ag_stat, ag_etp, created_at, updated_at
+         FROM agences WHERE remote_id = ?1",
+        rusqlite::params![user.us_agence],
+        |row| {
+            Ok(Agence {
+                id: row.get(0)?,
+                remote_id: row.get(1)?,
+                ag_code: row.get(2)?,
+                ag_nom: row.get(3)?,
+                ag_phone: row.get(4)?,
+                ag_pays: row.get(5)?,
+                ag_ville: row.get(6)?,
+                ag_devise: row.get(7)?,
+                ag_prefix: row.get(8)?,
+                ag_stat: row.get(9)?,
+                ag_etp: row.get(10)?,
+                created_at: row.get(11)?,
+                updated_at: row.get(12)?,
+            })
+        }
+    ).map_err(|e| format!("Agence non trouvée: {}", e))?;
+
+    println!("✅ [LOGIN] Agence trouvée: {}", agence.ag_nom);
+
+    // Récupérer l'entreprise
+    let entreprise = db.conn.query_row(
+        "SELECT id, remote_id, etp_code, etp_sender, etp_nom, etp_mail, etp_phone,
+                etp_pays, etp_msgbagage, etp_msgcolis, etp_pass, etp_stat, etp_img,
+                etp_img_local, created_at, updated_at
+         FROM entreprises WHERE remote_id = ?1",
+        rusqlite::params![agence.ag_etp],
+        |row| {
+            Ok(Entreprise {
+                id: row.get(0)?,
+                remote_id: row.get(1)?,
+                etp_code: row.get(2)?,
+                etp_sender: row.get(3)?,
+                etp_nom: row.get(4)?,
+                etp_mail: row.get(5)?,
+                etp_phone: row.get(6)?,
+                etp_pays: row.get(7)?,
+                etp_msgbagage: row.get(8)?,
+                etp_msgcolis: row.get(9)?,
+                etp_pass: row.get(10)?,
+                etp_stat: row.get(11)?,
+                etp_img: row.get(12)?,
+                etp_img_local: row.get(13)?,
+                created_at: row.get(14)?,
+                updated_at: row.get(15)?,
+            })
+        }
+    ).map_err(|e| format!("Entreprise non trouvée: {}", e))?;
+
+    println!("✅ [LOGIN] Entreprise trouvée: {}", entreprise.etp_nom);
+    println!("🎉 [LOGIN] Connexion réussie pour: {}", user.us_nom);
+
+    Ok(AuthResponse {
+        user,
+        agence,
+        entreprise,
+    })
+}
+
 // ============== STATISTICS ==============
 
 #[derive(serde::Serialize)]
@@ -645,4 +757,67 @@ pub fn get_ticket_statistics(
         .map_err(|e| format!("DB error: {}", e))?;
 
     Ok(TicketStats { count, total })
+}
+
+// ============== SYNC TICKETS BY USER ==============
+
+#[tauri::command]
+pub async fn sync_tickets_by_user(
+    app_handle: tauri::AppHandle,
+    user_id: i64,
+) -> Result<usize, String> {
+    println!("🔄 [SYNC TICKETS] Synchronisation des tickets pour l'utilisateur {}", user_id);
+
+    let client = reqwest::Client::new();
+
+    // Appeler l'API pour récupérer les tickets de l'utilisateur
+    let response = client
+        .post("https://guichet.createsarl.com/api/ticketbyuser")
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({ "user": user_id }))
+        .send()
+        .await
+        .map_err(|e| format!("Erreur appel API: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Erreur HTTP: {}", response.status()));
+    }
+
+    let json_response: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Erreur parsing JSON: {}", e))?;
+
+    println!("📦 [SYNC TICKETS] Réponse API reçue: status = {:?}", json_response.get("status"));
+
+    // Vérifier le statut de la réponse
+    if json_response.get("status").and_then(|s| s.as_i64()) != Some(200) {
+        return Err("Réponse API invalide".to_string());
+    }
+
+    // Extraire les données des tickets
+    let tickets_data = json_response
+        .get("data")
+        .and_then(|d| d.as_array())
+        .ok_or_else(|| "Format de réponse inattendu".to_string())?;
+
+    println!("📊 [SYNC TICKETS] {} tickets à synchroniser", tickets_data.len());
+
+    // Obtenir la connexion à la BD
+    let app_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Erreur app_data_dir: {}", e))?;
+    let db_path = app_dir.join("fast_app.db");
+
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Erreur connexion BD: {}", e))?;
+
+    // Synchroniser les tickets
+    let count = sync_tickets_from_api(&conn, tickets_data.clone())
+        .map_err(|e| format!("Erreur sync tickets: {}", e))?;
+
+    println!("✅ [SYNC TICKETS] {} tickets synchronisés avec succès", count);
+
+    Ok(count)
 }

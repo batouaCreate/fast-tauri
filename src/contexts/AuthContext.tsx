@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authApi, ApiError, gareApi, destinationApi, departureApi, ticketApi } from '../services/api';
 import { offlineAgenceApi, offlineDestinationApi, offlineDepartureApi, offlineTicketApi } from '../services/offline-api';
+import { invoke } from '@tauri-apps/api/core';
+import { useTicketSync } from '../hooks';
 
 interface User {
   id: string;
@@ -37,6 +39,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  // Synchronisation automatique des tickets en arrière-plan
+  const ticketSyncStatus = useTicketSync({
+    userId: user ? parseInt(user.id) : null,
+    intervalMs: 5 * 60 * 1000, // Synchroniser toutes les 5 minutes
+    enabled: isAuthenticated,
+    onSuccess: (count) => {
+      console.log(`✅ [BACKGROUND SYNC] ${count} tickets synchronisés automatiquement`);
+    },
+    onError: (error) => {
+      console.error('❌ [BACKGROUND SYNC] Erreur de synchronisation:', error);
+    },
+  });
+
   useEffect(() => {
     // Vérifier si l'utilisateur est déjà connecté (localStorage)
     const storedUser = localStorage.getItem('user');
@@ -49,44 +64,95 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (phone: string, password: string) => {
+    // Essayer d'abord la connexion locale (offline)
     try {
-      console.log('🔐 [AUTH] Tentative de connexion...');
-      const response = await authApi.login(phone, password);
+      console.log('🔐 [AUTH] Tentative de connexion locale...');
+      const response = await invoke<{
+        user: any;
+        agence: any;
+        entreprise: any;
+      }>('login_offline', { phone, password });
+
+      console.log('✅ [AUTH] Connexion locale réussie:', response);
 
       const authenticatedUser: User = {
-        id: response.usid.toString(),
-        name: response.nom,
-        email: phone, // L'API ne retourne pas l'email, on utilise le téléphone
-        phone: phone, // Le numéro de téléphone
+        id: response.user.remote_id?.toString() || response.user.id?.toString() || '0',
+        name: response.user.us_nom,
+        email: response.user.us_email || phone,
+        phone: response.user.us_phone || phone,
         login: phone,
-        photo: '', // L'API ne retourne pas de photo
-        printerId: 0, // L'API ne retourne pas de printerId
+        photo: response.user.us_photo || 'default.png',
+        printerId: response.user.us_printer ? parseInt(response.user.us_printer) : 0,
         agence: {
-          id: response.agid,
-          name: response.agnom,
-          code: '', // L'API ne retourne pas le code
-          city: '', // L'API ne retourne pas la ville
-          currency: 'FCFA', // Valeur par défaut
+          id: response.agence.remote_id || response.agence.id || 0,
+          name: response.agence.ag_nom,
+          code: response.agence.ag_code || '',
+          city: response.agence.ag_ville || '',
+          currency: response.agence.ag_devise || 'FCFA',
         },
-        companyLogo: response.logo,
-        companyName: response.etpnom,
+        companyLogo: response.entreprise.etp_img_local || response.entreprise.etp_img,
+        companyName: response.entreprise.etp_nom,
       };
 
       setUser(authenticatedUser);
-      // L'API ne retourne pas de token, on utilise une valeur temporaire
-      const tempToken = `token_${response.usid}_${Date.now()}`;
+      const tempToken = `token_${response.user.remote_id}_${Date.now()}`;
       setAccessToken(tempToken);
       setIsAuthenticated(true);
 
       // Stocker les données dans le localStorage
       localStorage.setItem('user', JSON.stringify(authenticatedUser));
       localStorage.setItem('accessToken', tempToken);
+      localStorage.setItem('userId', (response.user.remote_id || response.user.id).toString());
+      localStorage.setItem('agenceId', (response.agence.remote_id || response.agence.id).toString());
+
+      console.log('✅ [AUTH] Connexion locale réussie, userId:', response.user.remote_id);
+
+      // Synchroniser les données de référence en arrière-plan
+      const userId = response.user.remote_id || response.user.id || 0;
+      const agenceId = response.agence.remote_id || response.agence.id || 0;
+      syncReferenceData(userId, agenceId);
+
+      return; // Sortir si la connexion locale réussit
+    } catch (localError) {
+      console.warn('⚠️ [AUTH] Connexion locale échouée, tentative en ligne...', localError);
+    }
+
+    // Si la connexion locale échoue, essayer l'API en ligne
+    try {
+      console.log('🔐 [AUTH] Tentative de connexion en ligne...');
+      const response = await authApi.login(phone, password);
+
+      const authenticatedUser: User = {
+        id: response.usid.toString(),
+        name: response.nom,
+        email: phone,
+        phone: phone,
+        login: phone,
+        photo: '',
+        printerId: 0,
+        agence: {
+          id: response.agid,
+          name: response.agnom,
+          code: '',
+          city: '',
+          currency: 'FCFA',
+        },
+        companyLogo: response.logo,
+        companyName: response.etpnom,
+      };
+
+      setUser(authenticatedUser);
+      const tempToken = `token_${response.usid}_${Date.now()}`;
+      setAccessToken(tempToken);
+      setIsAuthenticated(true);
+
+      localStorage.setItem('user', JSON.stringify(authenticatedUser));
+      localStorage.setItem('accessToken', tempToken);
       localStorage.setItem('userId', response.usid.toString());
       localStorage.setItem('agenceId', response.agid.toString());
 
-      console.log('✅ [AUTH] Connexion réussie, userId:', response.usid, 'agenceId:', response.agid);
+      console.log('✅ [AUTH] Connexion en ligne réussie, userId:', response.usid, 'agenceId:', response.agid);
 
-      // Synchroniser les données de référence en arrière-plan
       syncReferenceData(response.usid, response.agid);
     } catch (error) {
       const apiError = error as ApiError;

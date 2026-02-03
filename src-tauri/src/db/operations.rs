@@ -1043,6 +1043,42 @@ pub fn get_all_users(conn: &Connection) -> Result<Vec<User>> {
     users.collect()
 }
 
+pub fn get_user_by_phone(conn: &Connection, phone: &str) -> Result<Option<User>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_id, us_agence, us_type, us_code, us_nom, us_email, us_phone,
+                us_pass, us_stat, us_photo, us_device, us_printer,
+                created_at, updated_at
+         FROM users
+         WHERE us_phone = ?1 AND us_stat = '1'
+         LIMIT 1"
+    )?;
+
+    let mut rows = stmt.query_map(params![phone], |row| {
+        Ok(User {
+            id: row.get(0)?,
+            remote_id: row.get(1)?,
+            us_agence: row.get(2)?,
+            us_type: row.get(3)?,
+            us_code: row.get(4)?,
+            us_nom: row.get(5)?,
+            us_email: row.get(6)?,
+            us_phone: row.get(7)?,
+            us_pass: row.get(8)?,
+            us_stat: row.get(9)?,
+            us_photo: row.get(10)?,
+            us_device: row.get(11)?,
+            us_printer: row.get(12)?,
+            created_at: row.get(13)?,
+            updated_at: row.get(14)?,
+        })
+    })?;
+
+    match rows.next() {
+        Some(result) => result.map(Some),
+        None => Ok(None),
+    }
+}
+
 // ============== IMAGE DOWNLOAD ==============
 
 pub async fn download_entreprise_image(

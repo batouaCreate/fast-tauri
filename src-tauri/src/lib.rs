@@ -231,8 +231,12 @@ pub fn run() {
             commands::get_db_info,
             // Commandes pour synchronisation manuelle
             commands::sync_users_data,
+            // Commandes pour l'authentification
+            commands::login_offline,
             // Commandes pour les statistiques
-            commands::get_ticket_statistics
+            commands::get_ticket_statistics,
+            // Commandes pour synchroniser les tickets par utilisateur
+            commands::sync_tickets_by_user
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
