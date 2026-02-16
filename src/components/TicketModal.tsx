@@ -297,6 +297,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         dep_nom: departure.dep_nom,
         dep_date: departure.dep_date,
         dep_heure: departure.dep_heure,
+        dep_numcar: departure.dep_numcar,
         ag_nom: departure.ag_nom,
         dest_ville: selectedDest?.dest_ville || 'N/A',
         dest_price: totalPrice.toString(),
@@ -377,6 +378,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         dep_nom: departure.dep_nom,
         dep_date: departure.dep_date,
         dep_heure: departure.dep_heure,
+        dep_numcar: departure.dep_numcar,
         ag_nom: departure.ag_nom,
         dest_ville: selectedDest?.dest_ville || 'N/A',
         dest_price: totalPrice.toString(),
@@ -426,6 +428,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
       const departure = ticketData.dep_nom || 'N/A';
       const date = ticketData.dep_date || 'N/A';
       const time = ticketData.dep_heure || 'N/A';
+      const busNumber = ticketData.dep_numcar || undefined;
       const departureStation = ticketData.ag_nom || 'N/A';
       const destination = ticketData.dest_ville || 'N/A';
       const seatNumber = ticketData.tick_siege || selectedSeats[0];
@@ -441,6 +444,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         departure,
         date,
         time,
+        busNumber,
         departureStation,
         destination,
         seatNumber,
@@ -454,6 +458,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         departure,
         date,
         time,
+        busNumber,
         departureStation,
         destination,
         seatNumber,

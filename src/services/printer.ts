@@ -167,22 +167,33 @@ export class TicketBuilder {
     passenger?: string;
     isGratuit?: boolean;
     companyName?: string;
+    busNumber?: string;
   }): TicketData {
     // Construire le titre avec le nom de l'entreprise si fourni
     const title = data.companyName ? data.companyName : 'TICKET DE TRANSPORT';
 
+    const items: TicketItem[] = [
+      { label: 'Num Ticket', value: data.ticketNumber },
+      { label: 'Depart', value: data.departure },
+      { label: 'Date', value: data.date },
+      { label: 'Heure', value: data.time },
+    ];
+
+    // Ajouter le numéro de bus si fourni
+    if (data.busNumber) {
+      items.push({ label: 'Bus', value: data.busNumber });
+    }
+
+    items.push(
+      { label: 'Gare depart', value: data.departureStation },
+      { label: 'Destination', value: data.destination },
+      { label: 'Siege', value: data.seatNumber },
+      { label: 'Prix', value: data.price }
+    );
+
     return {
       title,
-      items: [
-        { label: 'Num Ticket', value: data.ticketNumber },
-        { label: 'Depart', value: data.departure },
-        { label: 'Date', value: data.date },
-        { label: 'Heure', value: data.time },
-        { label: 'Gare depart', value: data.departureStation },
-        { label: 'Destination', value: data.destination },
-        { label: 'Siege', value: data.seatNumber },
-        { label: 'Prix', value: data.price },
-      ],
+      items,
       // Si c'est gratuit, afficher "GRATUIT" au lieu du total
       total: data.isGratuit ? 'GRATUIT' : `TOTAL: ${data.price}`,
       footer: [
