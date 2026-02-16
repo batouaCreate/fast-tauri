@@ -3,6 +3,9 @@ use crate::db::operations::{sync_agences_from_api, get_all_agences, get_agences_
 use tauri::{State, Manager};
 use std::sync::Mutex;
 use sha1::{Sha1, Digest};
+use std::fs;
+use std::path::Path;
+use base64::{Engine as _, engine::general_purpose};
 
 pub struct AppState {
     pub db: Mutex<Database>,
@@ -849,4 +852,30 @@ pub async fn sync_tickets_by_user(
     println!("✅ [SYNC TICKETS] {} tickets synchronisés avec succès", count);
 
     Ok(count)
+}
+
+// ============== FILE OPERATIONS ==============
+
+#[tauri::command]
+pub fn read_file_as_base64(file_path: String) -> Result<String, String> {
+    println!("📁 [READ FILE] Lecture du fichier: {}", file_path);
+
+    let path = Path::new(&file_path);
+
+    if !path.exists() {
+        println!("❌ [READ FILE] Fichier non trouvé: {}", file_path);
+        return Err(format!("Fichier non trouvé: {}", file_path));
+    }
+
+    match fs::read(path) {
+        Ok(bytes) => {
+            let base64 = general_purpose::STANDARD.encode(&bytes);
+            println!("✅ [READ FILE] Fichier lu avec succès ({} octets -> {} caractères base64)", bytes.len(), base64.len());
+            Ok(base64)
+        }
+        Err(e) => {
+            println!("❌ [READ FILE] Erreur lecture: {}", e);
+            Err(format!("Erreur lecture fichier: {}", e))
+        }
+    }
 }

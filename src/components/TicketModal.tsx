@@ -487,6 +487,20 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
             console.log('✅ Taille du base64:', cleanLogo.length, 'caractères');
             console.log('✅ Premiers 100 chars:', cleanLogo.substring(0, 100));
           }
+          // Vérifier si c'est un chemin de fichier local (commence par / ou C:\ ou contient /)
+          else if (logoUrl.startsWith('/') || logoUrl.match(/^[A-Z]:\\/i) || logoUrl.includes('/')) {
+            console.log('📁 Logo est un chemin de fichier local');
+            console.log('📁 Chemin:', logoUrl);
+            console.log('🔄 Lecture du fichier local en cours...');
+
+            // Utiliser la commande Tauri pour lire le fichier directement en base64
+            const { invoke } = await import('@tauri-apps/api/core');
+            cleanLogo = await invoke<string>('read_file_as_base64', { filePath: logoUrl });
+
+            console.log('✅ Fichier local lu et converti en base64');
+            console.log('✅ Taille du base64:', cleanLogo.length, 'caractères');
+            console.log('✅ Premiers 100 chars:', cleanLogo.substring(0, 100));
+          }
           // Vérifier si c'est déjà du base64 avec préfixe data:image
           else if (logoUrl.includes(',')) {
             console.log('🔍 Logo contient un préfixe data:image, extraction...');
@@ -496,7 +510,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
           }
           // Sinon, considérer que c'est déjà du base64 pur
           else {
-            console.log('📝 Logo semble être du base64 pur (pas d\'URL HTTP)');
+            console.log('📝 Logo semble être du base64 pur');
             console.log('📝 Contenu reçu:', logoUrl.substring(0, 200));
             cleanLogo = logoUrl;
           }
@@ -504,7 +518,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
           console.log('🖼️ Logo final (premiers 100 chars):', cleanLogo.substring(0, 100));
         } catch (error) {
           console.error('❌ Erreur lors du traitement du logo:', error);
-          showError('Attention', 'Impossible de télécharger le logo, impression sans logo');
+          showError('Attention', 'Impossible de charger le logo, impression sans logo');
         }
       } else {
         console.log('⚠️ AUCUN LOGO FOURNI (logoUrl est null/undefined)');

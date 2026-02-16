@@ -237,7 +237,9 @@ pub fn run() {
             // Commandes pour les statistiques
             commands::get_ticket_statistics,
             // Commandes pour synchroniser les tickets par utilisateur
-            commands::sync_tickets_by_user
+            commands::sync_tickets_by_user,
+            // Commandes pour les opérations sur les fichiers
+            commands::read_file_as_base64
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
