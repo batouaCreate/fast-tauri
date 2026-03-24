@@ -192,6 +192,18 @@ const BordereauColisModal: React.FC<BordereauColisModalProps> = ({
                     </p>
                   </div>
                   <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Chauffeur</p>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {bordereauData.depart[0]?.dep_chauff}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Numéro du car</p>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {bordereauData.depart[0]?.dep_numcar}
+                    </p>
+                  </div>
+                  <div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Nombre de colis</p>
                     <p className="font-medium text-gray-900 dark:text-white">
                       {bordereauData.cptcolis}

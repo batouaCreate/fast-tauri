@@ -259,6 +259,16 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
       return;
     }
 
+    if (!customerInfo.name.trim()) {
+      showError('Erreur', 'Le nom complet du voyageur est obligatoire');
+      return;
+    }
+
+    if (!customerInfo.phone.trim()) {
+      showError('Erreur', 'Le téléphone du voyageur est obligatoire');
+      return;
+    }
+
     try {
       setIsSelling(true);
       const userId = localStorage.getItem('userId');
@@ -337,6 +347,16 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
 
     if (!selectedPrinter) {
       showError('Erreur', 'Veuillez sélectionner une imprimante');
+      return;
+    }
+
+    if (!customerInfo.name.trim()) {
+      showError('Erreur', 'Le nom complet du voyageur est obligatoire');
+      return;
+    }
+
+    if (!customerInfo.phone.trim()) {
+      showError('Erreur', 'Le téléphone du voyageur est obligatoire');
       return;
     }
 
@@ -752,7 +772,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Nom complet <span className="text-gray-400 text-xs">(optionnel)</span>
+                    Nom complet <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -762,13 +782,14 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
                       onChange={(e) => setCustomerInfo({ ...customerInfo, name: e.target.value })}
                       placeholder="Kouassi Jean"
                       className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 text-gray-900 dark:text-white"
+                      required
                     />
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Téléphone voyageur <span className="text-gray-400 text-xs">(optionnel)</span>
+                    Téléphone voyageur <span className="text-red-500">*</span>
                   </label>
                   <PhoneInput
                     defaultCountry="ci"
@@ -776,6 +797,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
                     onChange={(phone) => setCustomerInfo({ ...customerInfo, phone })}
                     inputClassName="w-full"
                     className="phone-input-custom"
+                    required
                   />
                 </div>
 
