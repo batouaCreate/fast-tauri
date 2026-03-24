@@ -27,7 +27,7 @@ export class ThermalPrinter {
   }
 
   /**
-   * Imprime un ticket avec un logo optionnel
+   * Imprime un ticket avec un logo (optionnel)
    * @param printerName - Nom de l'imprimante (ex: "USB001", "lp0", "thermal_printer")
    * @param ticketData - Données du ticket
    * @param logoBase64 - Logo en base64 (optionnel)
