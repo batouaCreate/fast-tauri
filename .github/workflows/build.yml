@@ -5,6 +5,7 @@ on:
     branches:
       - develop
       - main
+      - offline
     tags:
       - '*'
   pull_request:
