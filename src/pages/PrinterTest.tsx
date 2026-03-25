@@ -67,6 +67,7 @@ const PrinterTest: React.FC = () => {
         departure: 'Départ Test',
         departureStation: 'Gare d\'Abidjan',
         passenger: 'Jean BATOUA',
+        phone: '+225 07 08 09 10 11',
         destination: 'BONGOUANOU',
         seatNumber: '12',
         date: new Date().toLocaleDateString('fr-FR'),

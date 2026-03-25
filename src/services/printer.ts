@@ -165,6 +165,7 @@ export class TicketBuilder {
     seatNumber: string;
     price: string;
     passenger?: string;
+    phone?: string;
     isGratuit?: boolean;
     companyName?: string;
     busNumber?: string;
@@ -187,9 +188,20 @@ export class TicketBuilder {
     items.push(
       { label: 'Gare depart', value: data.departureStation },
       { label: 'Destination', value: data.destination },
-      { label: 'Siege', value: data.seatNumber },
-      { label: 'Prix', value: data.price }
+      { label: 'Siege', value: data.seatNumber }
     );
+
+    // Ajouter le nom du voyageur si fourni
+    if (data.passenger) {
+      items.push({ label: 'Voyageur', value: data.passenger });
+    }
+
+    // Ajouter le téléphone du voyageur si fourni
+    if (data.phone) {
+      items.push({ label: 'Telephone', value: data.phone });
+    }
+
+    items.push({ label: 'Prix', value: data.price });
 
     return {
       title,

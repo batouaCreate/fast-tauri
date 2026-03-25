@@ -269,6 +269,13 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
       return;
     }
 
+    // Validation stricte du numéro de téléphone (au moins 8 chiffres)
+    const phoneDigits = customerInfo.phone.replace(/\D/g, '');
+    if (phoneDigits.length < 8) {
+      showError('Erreur', 'Veuillez entrer un numéro de téléphone valide (minimum 8 chiffres)');
+      return;
+    }
+
     try {
       setIsSelling(true);
       const userId = localStorage.getItem('userId');
@@ -357,6 +364,13 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
 
     if (!customerInfo.phone.trim()) {
       showError('Erreur', 'Le téléphone du voyageur est obligatoire');
+      return;
+    }
+
+    // Validation stricte du numéro de téléphone (au moins 8 chiffres)
+    const phoneDigits = customerInfo.phone.replace(/\D/g, '');
+    if (phoneDigits.length < 8) {
+      showError('Erreur', 'Veuillez entrer un numéro de téléphone valide (minimum 8 chiffres)');
       return;
     }
 
@@ -484,6 +498,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         seatNumber,
         price,
         passenger: customerInfo.name || undefined,
+        phone: customerInfo.phone || undefined,
         isGratuit, // Passer l'information pour adapter le total
         companyName: user?.companyName,
       });
