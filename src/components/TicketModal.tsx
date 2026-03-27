@@ -166,22 +166,19 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
     if (seat?.status === 'occupied') return;
 
     setSeats(prevSeats => {
-      // Désélectionner tous les sièges précédemment sélectionnés
-      const seatsWithDeselection = prevSeats.map(s =>
-        s.status === 'selected' ? { ...s, status: 'available' as const } : s
-      );
-
-      const existingSeat = seatsWithDeselection.find(s => s.id === seatId);
+      const existingSeat = prevSeats.find(s => s.id === seatId);
 
       if (existingSeat) {
-        // Le siège existe, on le sélectionne (il était disponible car on a tout désélectionné)
-        return seatsWithDeselection.map(s =>
-          s.id === seatId ? { ...s, status: 'selected' as const } : s
+        // Toggle: si le siège est sélectionné, on le désélectionne, sinon on le sélectionne
+        return prevSeats.map(s =>
+          s.id === seatId
+            ? { ...s, status: s.status === 'selected' ? ('available' as const) : ('selected' as const) }
+            : s
         );
       } else {
         // Le siège n'existe pas, on le crée avec le statut 'selected'
         return [
-          ...seatsWithDeselection,
+          ...prevSeats,
           {
             id: seatId,
             number: seatId,
@@ -192,8 +189,16 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
       }
     });
 
-    // Remplacer la sélection par le nouveau siège
-    setSelectedSeats([seatId]);
+    // Toggle dans selectedSeats
+    setSelectedSeats(prev => {
+      if (prev.includes(seatId)) {
+        // Désélectionner
+        return prev.filter(id => id !== seatId);
+      } else {
+        // Sélectionner
+        return [...prev, seatId];
+      }
+    });
   };
 
   // Calculer le prix basé sur la destination sélectionnée
@@ -203,8 +208,8 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
     return destination ? parseFloat(destination.dest_price) : 0;
   };
 
-  // Le prix total est simplement le prix de la destination (un seul siège)
-  const totalPrice = selectedSeats.length > 0 ? getDestinationPrice() : 0;
+  // Le prix total = prix de la destination × nombre de sièges sélectionnés
+  const totalPrice = selectedSeats.length > 0 ? getDestinationPrice() * selectedSeats.length : 0;
 
   // Gérer le changement de destination
   const handleDestinationChange = (destId: string) => {
@@ -250,7 +255,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
     e.preventDefault();
 
     if (!selectedDestination || selectedSeats.length === 0) {
-      showError('Erreur', 'Veuillez sélectionner une destination et un siège');
+      showError('Erreur', 'Veuillez sélectionner une destination et au moins un siège');
       return;
     }
 
@@ -285,44 +290,78 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         return;
       }
 
-      // Extraire le numéro du siège (enlever le "S")
-      const seatNumber = parseInt(selectedSeats[0].replace('S', ''));
+      console.log(`💾 [TICKET MODAL] Vente de ${selectedSeats.length} ticket(s) en local...`);
 
-      console.log('💾 [TICKET MODAL] Vente de ticket en local...');
-      const ticket = await offlineTicketApi.sell({
-        user: parseInt(userId),
-        depart: departure.dep_id,
-        dest: selectedDestination,
-        siege: seatNumber,
-        phone: customerInfo.phone,
-        voyageur: customerInfo.name,
-        price: totalPrice,
-        method: paymentMethod,
-        reduction: 0,
-        nature: 'PAYANT',
-      });
-
-      console.log('✅ [TICKET MODAL] Ticket vendu en local:', ticket);
-      showSuccess('Succès', 'Ticket vendu avec succès (sera synchronisé automatiquement)');
-
-      // Préparer les données pour l'impression
+      // Prix unitaire pour chaque siège
+      const unitPrice = getDestinationPrice();
       const selectedDest = destinations.find(d => d.dest_id === selectedDestination);
-      const ticketData = {
-        tick_id: ticket.id,
-        tick_siege: seatNumber.toString(),
-        tick_nature: 'PAYANT',
-        dep_nom: departure.dep_nom,
-        dep_date: departure.dep_date,
-        dep_heure: departure.dep_heure,
-        dep_numcar: departure.dep_numcar,
-        ag_nom: departure.ag_nom,
-        dest_ville: selectedDest?.dest_ville || 'N/A',
-        dest_price: totalPrice.toString(),
-      };
 
-      // Imprimer le ticket avec le logo de l'entreprise
-      if (selectedPrinter) {
-        await printTicket(ticketData, user?.companyLogo);
+      // Vendre un ticket pour chaque siège sélectionné
+      const soldTickets = [];
+      const errors = [];
+
+      for (const seatId of selectedSeats) {
+        try {
+          // Extraire le numéro du siège (enlever le "S")
+          const seatNumber = parseInt(seatId.replace('S', ''));
+
+          console.log(`💾 [TICKET MODAL] Vente du ticket pour le siège ${seatId}...`);
+          const ticket = await offlineTicketApi.sell({
+            user: parseInt(userId),
+            depart: departure.dep_id,
+            dest: selectedDestination,
+            siege: seatNumber,
+            phone: customerInfo.phone,
+            voyageur: customerInfo.name,
+            price: unitPrice,
+            method: paymentMethod,
+            reduction: 0,
+            nature: 'PAYANT',
+          });
+
+          console.log(`✅ [TICKET MODAL] Ticket vendu pour le siège ${seatId}:`, ticket);
+          soldTickets.push({ ticket, seatId, seatNumber });
+        } catch (error: any) {
+          console.error(`❌ [TICKET MODAL] Erreur pour le siège ${seatId}:`, error);
+          errors.push({ seatId, error: error.message });
+        }
+      }
+
+      // Afficher le résultat
+      if (soldTickets.length > 0) {
+        showSuccess('Succès', `${soldTickets.length} ticket(s) vendu(s) avec succès (sera synchronisé automatiquement)`);
+
+        // Imprimer tous les tickets vendus
+        if (selectedPrinter) {
+          console.log(`🖨️ [TICKET MODAL] Impression de ${soldTickets.length} ticket(s)...`);
+          for (const { ticket, seatId, seatNumber } of soldTickets) {
+            try {
+              const ticketData = {
+                tick_id: ticket.id,
+                tick_siege: seatNumber.toString(),
+                tick_nature: 'PAYANT',
+                dep_nom: departure.dep_nom,
+                dep_date: departure.dep_date,
+                dep_heure: departure.dep_heure,
+                dep_numcar: departure.dep_numcar,
+                ag_nom: departure.ag_nom,
+                dest_ville: selectedDest?.dest_ville || 'N/A',
+                dest_price: unitPrice.toString(),
+              };
+
+              await printTicket(ticketData, user?.companyLogo);
+              console.log(`✅ [TICKET MODAL] Ticket imprimé pour le siège ${seatId}`);
+            } catch (error) {
+              console.error(`❌ [TICKET MODAL] Erreur d'impression pour le siège ${seatId}:`, error);
+            }
+          }
+        }
+      }
+
+      // Afficher les erreurs s'il y en a
+      if (errors.length > 0) {
+        const errorMsg = `Erreur pour ${errors.length} siège(s): ${errors.map(e => e.seatId).join(', ')}`;
+        showError('Erreur partielle', errorMsg);
       }
 
       // Réinitialiser le formulaire
@@ -338,8 +377,8 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         onSuccess();
       }
     } catch (error: any) {
-      console.error('Erreur lors de la vente du ticket:', error);
-      showError('Erreur', error.message || 'Impossible de vendre le ticket');
+      console.error('Erreur lors de la vente des tickets:', error);
+      showError('Erreur', error.message || 'Impossible de vendre les tickets');
     } finally {
       setIsSelling(false);
     }
@@ -348,7 +387,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
   // Fonction pour créer un ticket gratuit
   const handleFreeTicket = async () => {
     if (!selectedDestination || selectedSeats.length === 0) {
-      showError('Erreur', 'Veuillez sélectionner une destination et un siège');
+      showError('Erreur', 'Veuillez sélectionner une destination et au moins un siège');
       return;
     }
 
@@ -383,44 +422,78 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         return;
       }
 
-      // Extraire le numéro du siège (enlever le "S")
-      const seatNumber = parseInt(selectedSeats[0].replace('S', ''));
+      console.log(`💾 [TICKET MODAL] Création de ${selectedSeats.length} ticket(s) gratuit(s) en local...`);
 
-      console.log('💾 [TICKET MODAL] Création de ticket gratuit en local...');
-      const ticket = await offlineTicketApi.sell({
-        user: parseInt(userId),
-        depart: departure.dep_id,
-        dest: selectedDestination,
-        siege: seatNumber,
-        phone: customerInfo.phone,
-        voyageur: customerInfo.name,
-        price: totalPrice,
-        method: paymentMethod,
-        reduction: totalPrice, // Réduction égale au prix pour les tickets gratuits
-        nature: 'GRATUIT',
-      });
-
-      console.log('✅ [TICKET MODAL] Ticket gratuit créé en local:', ticket);
-      showSuccess('Succès', 'Ticket gratuit créé avec succès (sera synchronisé automatiquement)');
-
-      // Préparer les données pour l'impression
+      // Prix unitaire pour chaque siège
+      const unitPrice = getDestinationPrice();
       const selectedDest = destinations.find(d => d.dest_id === selectedDestination);
-      const ticketData = {
-        tick_id: ticket.id,
-        tick_siege: seatNumber.toString(),
-        tick_nature: 'GRATUIT',
-        dep_nom: departure.dep_nom,
-        dep_date: departure.dep_date,
-        dep_heure: departure.dep_heure,
-        dep_numcar: departure.dep_numcar,
-        ag_nom: departure.ag_nom,
-        dest_ville: selectedDest?.dest_ville || 'N/A',
-        dest_price: totalPrice.toString(),
-      };
 
-      // Imprimer le ticket avec le logo de l'entreprise
-      if (selectedPrinter) {
-        await printTicket(ticketData, user?.companyLogo);
+      // Créer un ticket gratuit pour chaque siège sélectionné
+      const soldTickets = [];
+      const errors = [];
+
+      for (const seatId of selectedSeats) {
+        try {
+          // Extraire le numéro du siège (enlever le "S")
+          const seatNumber = parseInt(seatId.replace('S', ''));
+
+          console.log(`💾 [TICKET MODAL] Création du ticket gratuit pour le siège ${seatId}...`);
+          const ticket = await offlineTicketApi.sell({
+            user: parseInt(userId),
+            depart: departure.dep_id,
+            dest: selectedDestination,
+            siege: seatNumber,
+            phone: customerInfo.phone,
+            voyageur: customerInfo.name,
+            price: unitPrice,
+            method: paymentMethod,
+            reduction: unitPrice, // Réduction égale au prix pour les tickets gratuits
+            nature: 'GRATUIT',
+          });
+
+          console.log(`✅ [TICKET MODAL] Ticket gratuit créé pour le siège ${seatId}:`, ticket);
+          soldTickets.push({ ticket, seatId, seatNumber });
+        } catch (error: any) {
+          console.error(`❌ [TICKET MODAL] Erreur pour le siège ${seatId}:`, error);
+          errors.push({ seatId, error: error.message });
+        }
+      }
+
+      // Afficher le résultat
+      if (soldTickets.length > 0) {
+        showSuccess('Succès', `${soldTickets.length} ticket(s) gratuit(s) créé(s) avec succès (sera synchronisé automatiquement)`);
+
+        // Imprimer tous les tickets vendus
+        if (selectedPrinter) {
+          console.log(`🖨️ [TICKET MODAL] Impression de ${soldTickets.length} ticket(s) gratuit(s)...`);
+          for (const { ticket, seatId, seatNumber } of soldTickets) {
+            try {
+              const ticketData = {
+                tick_id: ticket.id,
+                tick_siege: seatNumber.toString(),
+                tick_nature: 'GRATUIT',
+                dep_nom: departure.dep_nom,
+                dep_date: departure.dep_date,
+                dep_heure: departure.dep_heure,
+                dep_numcar: departure.dep_numcar,
+                ag_nom: departure.ag_nom,
+                dest_ville: selectedDest?.dest_ville || 'N/A',
+                dest_price: unitPrice.toString(),
+              };
+
+              await printTicket(ticketData, user?.companyLogo);
+              console.log(`✅ [TICKET MODAL] Ticket gratuit imprimé pour le siège ${seatId}`);
+            } catch (error) {
+              console.error(`❌ [TICKET MODAL] Erreur d'impression pour le siège ${seatId}:`, error);
+            }
+          }
+        }
+      }
+
+      // Afficher les erreurs s'il y en a
+      if (errors.length > 0) {
+        const errorMsg = `Erreur pour ${errors.length} siège(s): ${errors.map(e => e.seatId).join(', ')}`;
+        showError('Erreur partielle', errorMsg);
       }
 
       // Réinitialiser le formulaire
@@ -436,8 +509,8 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         onSuccess();
       }
     } catch (error: any) {
-      console.error('Erreur lors de la création du ticket gratuit:', error);
-      showError('Erreur', error.message || 'Impossible de créer le ticket gratuit');
+      console.error('Erreur lors de la création des tickets gratuits:', error);
+      showError('Erreur', error.message || 'Impossible de créer les tickets gratuits');
     } finally {
       setIsSelling(false);
     }
@@ -819,13 +892,25 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
                 {/* Résumé */}
                 <div className="bg-primary-50 dark:bg-primary-900/20 rounded-xl p-4 space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-700 dark:text-gray-300">Siège sélectionné:</span>
+                    <span className="text-gray-700 dark:text-gray-300">
+                      {selectedSeats.length > 1 ? 'Sièges sélectionnés:' : 'Siège sélectionné:'}
+                    </span>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      {selectedSeats.length > 0 ? selectedSeats[0] : 'Aucun'}
+                      {selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Aucun'}
                     </span>
                   </div>
+                  {selectedSeats.length > 1 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-700 dark:text-gray-300">Prix unitaire:</span>
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {getDestinationPrice().toLocaleString()} FCFA
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-lg font-bold pt-2 border-t border-primary-200 dark:border-primary-700">
-                    <span className="text-gray-900 dark:text-white">Prix:</span>
+                    <span className="text-gray-900 dark:text-white">
+                      {selectedSeats.length > 1 ? `Total (${selectedSeats.length} sièges):` : 'Prix:'}
+                    </span>
                     <span className="text-primary-600 dark:text-primary-400">
                       {totalPrice.toLocaleString()} FCFA
                     </span>
@@ -864,7 +949,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
                         Traitement...
                       </>
                     ) : (
-                      'Ticket gratuit'
+                      selectedSeats.length > 1 ? 'Tickets gratuits' : 'Ticket gratuit'
                     )}
                   </button>
                   <button
@@ -880,7 +965,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
                     ) : (
                       <>
                         <CreditCard size={20} />
-                        Vendre le ticket
+                        {selectedSeats.length > 1 ? 'Vendre les tickets' : 'Vendre le ticket'}
                       </>
                     )}
                   </button>
