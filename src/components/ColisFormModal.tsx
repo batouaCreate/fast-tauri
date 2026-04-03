@@ -117,8 +117,10 @@ const ColisFormModal: React.FC<ColisFormModalProps> = ({ isOpen, onClose, onSucc
       return;
     }
 
-    if (!formData.phonexp.trim()) {
-      showError('Erreur', 'Veuillez entrer le téléphone de l\'expéditeur');
+    // Validation du téléphone expéditeur : optionnel, mais si renseigné doit avoir au moins 8 chiffres
+    const phonexpDigits = formData.phonexp.replace(/\D/g, '');
+    if (phonexpDigits.length > 0 && phonexpDigits.length < 8) {
+      showError('Erreur', 'Veuillez entrer un numéro de téléphone expéditeur valide (minimum 8 chiffres)');
       return;
     }
 
@@ -127,8 +129,10 @@ const ColisFormModal: React.FC<ColisFormModalProps> = ({ isOpen, onClose, onSucc
       return;
     }
 
-    if (!formData.phonedest.trim()) {
-      showError('Erreur', 'Veuillez entrer le téléphone du destinataire');
+    // Validation du téléphone destinataire : optionnel, mais si renseigné doit avoir au moins 8 chiffres
+    const phonedestDigits = formData.phonedest.replace(/\D/g, '');
+    if (phonedestDigits.length > 0 && phonedestDigits.length < 8) {
+      showError('Erreur', 'Veuillez entrer un numéro de téléphone destinataire valide (minimum 8 chiffres)');
       return;
     }
 

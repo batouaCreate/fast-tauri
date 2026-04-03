@@ -264,13 +264,12 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
       return;
     }
 
-    // Validation du téléphone si renseigné (au moins 8 chiffres)
-    if (customerInfo.phone.trim()) {
-      const phoneDigits = customerInfo.phone.replace(/\D/g, '');
-      if (phoneDigits.length < 8) {
-        showError('Erreur', 'Veuillez entrer un numéro de téléphone valide (minimum 8 chiffres)');
-        return;
-      }
+    // Validation du téléphone : optionnel, mais si renseigné doit avoir au moins 8 chiffres (hors indicatif)
+    const phoneDigits = customerInfo.phone.replace(/\D/g, '');
+    // Si plus de 3 chiffres (indicatif +225) mais moins de 11 (indicatif 3 + numéro 8)
+    if (phoneDigits.length > 3 && phoneDigits.length < 11) {
+      showError('Erreur', 'Veuillez entrer un numéro de téléphone valide (minimum 8 chiffres)');
+      return;
     }
 
     try {
@@ -388,13 +387,12 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
       return;
     }
 
-    // Validation du téléphone si renseigné (au moins 8 chiffres)
-    if (customerInfo.phone.trim()) {
-      const phoneDigits = customerInfo.phone.replace(/\D/g, '');
-      if (phoneDigits.length < 8) {
-        showError('Erreur', 'Veuillez entrer un numéro de téléphone valide (minimum 8 chiffres)');
-        return;
-      }
+    // Validation du téléphone : optionnel, mais si renseigné doit avoir au moins 8 chiffres (hors indicatif)
+    const phoneDigits = customerInfo.phone.replace(/\D/g, '');
+    // Si plus de 3 chiffres (indicatif +225) mais moins de 11 (indicatif 3 + numéro 8)
+    if (phoneDigits.length > 3 && phoneDigits.length < 11) {
+      showError('Erreur', 'Veuillez entrer un numéro de téléphone valide (minimum 8 chiffres)');
+      return;
     }
 
     try {

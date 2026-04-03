@@ -116,8 +116,10 @@ const BagageFormModal: React.FC<BagageFormModalProps> = ({ isOpen, onClose, onSu
       return;
     }
 
-    if (!formData.phonexp.trim()) {
-      showError('Erreur', 'Veuillez entrer le téléphone du voyageur');
+    // Validation du téléphone voyageur : optionnel, mais si renseigné doit avoir au moins 8 chiffres
+    const phonexpDigits = formData.phonexp.replace(/\D/g, '');
+    if (phonexpDigits.length > 0 && phonexpDigits.length < 8) {
+      showError('Erreur', 'Veuillez entrer un numéro de téléphone voyageur valide (minimum 8 chiffres)');
       return;
     }
 
