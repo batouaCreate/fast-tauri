@@ -498,6 +498,110 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
     }
   };
 
+  // Fonction pour créer un ticket aller-retour (prix × 2 - 500)
+  const handleAllerRetourTicket = async () => {
+    if (!selectedDestination || selectedSeats.length === 0) {
+      showError('Erreur', 'Veuillez sélectionner une destination et au moins un siège');
+      return;
+    }
+
+    if (!selectedPrinter) {
+      showError('Erreur', 'Veuillez sélectionner une imprimante');
+      return;
+    }
+
+    const phoneDigits = customerInfo.phone.replace(/\D/g, '');
+    if (phoneDigits.length > 3 && phoneDigits.length < 11) {
+      showError('Erreur', 'Veuillez entrer un numéro de téléphone valide (minimum 8 chiffres)');
+      return;
+    }
+
+    try {
+      setIsSelling(true);
+      const userId = localStorage.getItem('userId');
+
+      if (!userId) {
+        showError('Erreur', 'Session expirée, veuillez vous reconnecter');
+        return;
+      }
+
+      const allerRetourPrice = getDestinationPrice() * 2 - 500;
+      const selectedDest = destinations.find(d => d.dest_id === selectedDestination);
+      const soldTickets = [];
+      const errors = [];
+
+      for (const seatId of selectedSeats) {
+        try {
+          const seatNumber = parseInt(seatId.replace('S', ''));
+
+          const ticket = await offlineTicketApi.sell({
+            user: parseInt(userId),
+            depart: departure.dep_id,
+            dest: selectedDestination,
+            siege: seatNumber,
+            phone: customerInfo.phone,
+            voyageur: customerInfo.name,
+            price: allerRetourPrice,
+            method: paymentMethod,
+            reduction: 0,
+            nature: 'ALLER-RETOUR',
+          });
+
+          soldTickets.push({ ticket, seatId, seatNumber });
+        } catch (error: any) {
+          errors.push({ seatId, error: error.message });
+        }
+      }
+
+      if (soldTickets.length > 0) {
+        showSuccess('Succès', `${soldTickets.length} ticket(s) aller-retour vendu(s) avec succès`);
+
+        if (selectedPrinter) {
+          for (const { ticket, seatId, seatNumber } of soldTickets) {
+            try {
+              const ticketData = {
+                tick_id: ticket.id,
+                tick_siege: seatNumber.toString(),
+                tick_nature: 'ALLER-RETOUR',
+                dep_nom: departure.dep_nom,
+                dep_date: departure.dep_date,
+                dep_heure: departure.dep_heure,
+                dep_numcar: departure.dep_numcar,
+                ag_nom: departure.ag_nom,
+                dest_ville: selectedDest?.dest_ville || 'N/A',
+                dest_price: allerRetourPrice.toString(),
+              };
+
+              await printTicket(ticketData, user?.companyLogo);
+            } catch (error) {
+              console.error(`❌ [TICKET MODAL] Erreur d'impression pour le siège ${seatId}:`, error);
+            }
+          }
+        }
+      }
+
+      if (errors.length > 0) {
+        const errorMsg = `Erreur pour ${errors.length} siège(s): ${errors.map(e => e.seatId).join(', ')}`;
+        showError('Erreur partielle', errorMsg);
+      }
+
+      setSelectedSeats([]);
+      setCustomerInfo({ name: '', phone: '' });
+      setSelectedDestination(null);
+
+      await reloadSeats();
+
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (error: any) {
+      console.error('Erreur lors de la vente des tickets aller-retour:', error);
+      showError('Erreur', error.message || 'Impossible de vendre les tickets aller-retour');
+    } finally {
+      setIsSelling(false);
+    }
+  };
+
   // Fonction pour formater les nombres avec des espaces simples (compatible imprimante thermique)
   const formatNumber = (num: number): string => {
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -554,8 +658,9 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
         price,
         passenger: customerInfo.name || undefined,
         phone: customerInfo.phone || undefined,
-        isGratuit, // Passer l'information pour adapter le total
+        isGratuit,
         companyName: user?.companyName,
+        nature: ticketData.tick_nature || undefined,
       });
 
       // Préparer le logo
@@ -895,6 +1000,14 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
                       {totalPrice.toLocaleString()} FCFA
                     </span>
                   </div>
+                  {selectedDestination && (
+                    <div className="flex justify-between text-sm pt-1 border-t border-primary-200 dark:border-primary-700">
+                      <span className="text-purple-600 dark:text-purple-400">Prix aller-retour{selectedSeats.length > 1 ? ` (×${selectedSeats.length})` : ''}:</span>
+                      <span className="font-medium text-purple-600 dark:text-purple-400">
+                        {((getDestinationPrice() * 2 - 500) * selectedSeats.length).toLocaleString()} FCFA
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Méthode de paiement */}
@@ -916,36 +1029,42 @@ const TicketModal: React.FC<TicketModalProps> = ({ isOpen, onClose, departure, o
                   </select>
                 </div>
 
-                <div className="flex gap-3 pt-4">
+                <div className="grid grid-cols-3 gap-2 pt-4">
                   <button
                     type="button"
                     onClick={handleFreeTicket}
                     disabled={isSelling || selectedSeats.length === 0}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-2.5 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 text-sm"
                   >
                     {isSelling ? (
-                      <>
-                        <Loader2 size={20} className="animate-spin" />
-                        Traitement...
-                      </>
+                      <Loader2 size={16} className="animate-spin" />
                     ) : (
                       selectedSeats.length > 1 ? 'Tickets gratuits' : 'Ticket gratuit'
                     )}
                   </button>
                   <button
-                    type="submit"
+                    type="button"
+                    onClick={handleAllerRetourTicket}
                     disabled={isSelling || selectedSeats.length === 0}
-                    className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2.5 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 text-sm"
                   >
                     {isSelling ? (
-                      <>
-                        <Loader2 size={20} className="animate-spin" />
-                        Traitement...
-                      </>
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      'Aller-Retour'
+                    )}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSelling || selectedSeats.length === 0}
+                    className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 text-sm px-3 py-2.5"
+                  >
+                    {isSelling ? (
+                      <Loader2 size={16} className="animate-spin" />
                     ) : (
                       <>
-                        <CreditCard size={20} />
-                        {selectedSeats.length > 1 ? 'Vendre les tickets' : 'Vendre le ticket'}
+                        <CreditCard size={16} />
+                        {selectedSeats.length > 1 ? 'Vendre' : 'Vendre'}
                       </>
                     )}
                   </button>

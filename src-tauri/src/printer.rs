@@ -222,18 +222,22 @@ pub fn convert_image_to_escpos(base64_image: &str, width: u32) -> Result<Vec<u8>
 
     commands.extend_from_slice(&[0x1D, 0x76, 0x30, 0x00]); // GS v 0
 
-    let width_bytes = ((width + 7) / 8) as u8;
-    let height = img.height() as u16;
+    // Utiliser les dimensions réelles de l'image après redimensionnement
+    let actual_width = img.width();
+    let actual_height = img.height();
+
+    let width_bytes = ((actual_width + 7) / 8) as u8;
+    let height = actual_height as u16;
 
     commands.push(width_bytes);
     commands.push(0x00);
     commands.extend_from_slice(&height.to_le_bytes());
 
-    for y in 0..img.height() {
+    for y in 0..actual_height {
         let mut byte = 0u8;
         let mut bit = 7;
 
-        for x in 0..width {
+        for x in 0..actual_width {
             let pixel = img.get_pixel(x, y);
             if pixel[0] < 128 {
                 byte |= 1 << bit;

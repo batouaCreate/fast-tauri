@@ -169,6 +169,7 @@ export class TicketBuilder {
     isGratuit?: boolean;
     companyName?: string;
     busNumber?: string;
+    nature?: string;
   }): TicketData {
     // Construire le titre avec le nom de l'entreprise si fourni
     const title = data.companyName ? data.companyName : 'TICKET DE TRANSPORT';
@@ -190,6 +191,10 @@ export class TicketBuilder {
       { label: 'Destination', value: data.destination },
       { label: 'Siege', value: data.seatNumber }
     );
+
+    if (data.nature && data.nature !== 'PAYANT') {
+      items.push({ label: 'Nature', value: data.nature });
+    }
 
     // Ajouter le nom du voyageur si fourni
     if (data.passenger) {
